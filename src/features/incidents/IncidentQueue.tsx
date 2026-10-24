@@ -1,6 +1,6 @@
 import { Droplets, Utensils, Pill, MapPin, ArrowUpRight } from 'lucide-react';
 import type { Incident } from '../../../shared/contracts';
-export const statusLabels = { needs_review: 'Needs review', verified: 'Ready to assign', assigned: 'Assigned', delivered: 'Delivered' };
+export const statusLabels = { needs_review: 'Verify data · Not on map', verified: 'Verified · On map', assigned: 'Rescuers alerted', delivered: 'Delivered' };
 export function IncidentQueue({ incidents, selectedId, onSelect }: { incidents: Incident[]; selectedId: string | null; onSelect: (id: string) => void }) {
   return <div className="incident-list">{incidents.length === 0 && <p className="empty">No requests match this filter.</p>}{incidents.map(item => {
     const Icon = item.category === 'water' ? Droplets : item.category === 'food' ? Utensils : Pill;

@@ -1,6 +1,6 @@
-import type { Board, IncidentAction, Recommendation } from '../../shared/contracts';
-import { createDemoBoard } from '../data/fixtures';
-import { applyAction, recommend } from '../features/operations/rules';
+import type { Board, IncidentAction } from '../../shared/contracts';
+import { createDemoBoard, syntheticIncident } from '../data/fixtures';
+import { alertRescuers, applyAction, approveRoutes, planRoutes } from '../features/operations/rules';
 
 export const isDemo = import.meta.env.VITE_DATA_MODE !== 'live';
 let demoBoard = createDemoBoard();
@@ -12,29 +12,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(`API request failed (${response.status}). Please retry.`);
   return response.json() as Promise<T>;
 }
-
+function update(operation: (board: Board) => Board) {
+  demoBoard = operation(demoBoard);
+  return structuredClone(demoBoard);
+}
 export const api = {
   getBoard: async (): Promise<Board> => isDemo ? structuredClone(demoBoard) : request('/board'),
-  getRecommendation: async (id: string): Promise<Recommendation | null> => {
-    if (!isDemo) return request(`/incidents/${encodeURIComponent(id)}/recommendation`, { method: 'POST' });
-    const incident = demoBoard.incidents.find(item => item.id === id);
-    return incident ? recommend(incident, demoBoard.teams) : null;
+  act: async (id: string, action: IncidentAction): Promise<Board> => isDemo
+    ? update(board => applyAction(board, id, action))
+    : request(`/incidents/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify(action) }),
+  plan: async (): Promise<Board> => {
+    if (!isDemo) return request('/plans', { method: 'POST' });
+    // Yield once so the UI can display its working state before local optimization.
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return update(planRoutes);
   },
-  act: async (id: string, action: IncidentAction): Promise<Board> => {
-    if (!isDemo) return request(`/incidents/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify(action) });
-    demoBoard = applyAction(demoBoard, id, action);
-    return structuredClone(demoBoard);
-  },
+  approvePlan: async (id: string): Promise<Board> => isDemo
+    ? update(board => approveRoutes(board, id))
+    : request(`/plans/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+  alertRescuers: async (id: string): Promise<Board> => isDemo
+    ? update(board => alertRescuers(board, id))
+    : request(`/plans/${encodeURIComponent(id)}/alerts`, { method: 'POST' }),
   simulateReport: async (): Promise<Board> => {
-    if (!isDemo) throw new Error('Simulation is available only in demo mode.');
-    if (demoBoard.incidents.some(item => item.id === 'REQ-1046')) return structuredClone(demoBoard);
-    const at = new Date().toISOString();
-    demoBoard.incidents.unshift({ id: 'REQ-1046', title: 'New water request at the library', category: 'water', priority: 'high', status: 'needs_review', location: { label: 'Eastside library · demo location', coordinates: [-121.871, 37.345] }, people: 12, quantity: 3, unit: 'cases', source: 'voice', originalReport: 'We are twelve people at the library. Please bring three cases of water. Use the main entrance.', summary: 'Three cases of water requested for twelve people. Coordinator verification required.', missingInfo: [], updatedAt: at });
-    demoBoard.activity.unshift({ id: crypto.randomUUID(), message: 'REQ-1046 · Simulated voice transcript received', at });
-    return structuredClone(demoBoard);
+    if (!isDemo) throw new Error('Simulation is only available in demo mode.');
+    if (demoBoard.incidents.length >= 7) throw new Error('All synthetic reports are loaded. Reset to replay.');
+    return update(board => ({
+      ...board, incidents: [...board.incidents, syntheticIncident(6)],
+      activity: [{ id: crypto.randomUUID(), message: 'New synthetic text report collected · Awaiting verification', at: new Date().toISOString() }, ...board.activity],
+    }));
   },
   reset: async (): Promise<Board> => {
-    if (!isDemo) throw new Error('Reset is available only in demo mode.');
+    if (!isDemo) throw new Error('Reset is only available in demo mode.');
     demoBoard = createDemoBoard(); return structuredClone(demoBoard);
   },
 };

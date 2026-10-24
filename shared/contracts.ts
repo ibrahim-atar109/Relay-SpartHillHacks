@@ -17,6 +17,8 @@ export interface Incident {
   missingInfo: string[];
   teamId?: string;
   updatedAt: string;
+  nodeId?: string;
+  verifiedAt?: string;
 }
 export interface Team {
   id: string;
@@ -26,11 +28,45 @@ export interface Team {
   capacity: number;
   capabilities: Incident['category'][];
   coordinates: [number, number];
+  nodeId: string;
 }
 export interface Activity { id: string; message: string; at: string }
-export interface Board { incidents: Incident[]; teams: Team[]; activity: Activity[] }
-export interface Recommendation { incidentId: string; teamId: string; reason: string }
+export interface RouteStop { incidentId: string; arrivalMinutes: number }
+export interface TeamRoute {
+  teamId: string;
+  stops: RouteStop[];
+  coordinates: [number, number][];
+  edgeIds: string[];
+  travelMinutes: number;
+  load: number;
+}
+export interface RoutePlan {
+  id: string;
+  revision: number;
+  status: 'proposed' | 'approved' | 'alerted';
+  routes: TeamRoute[];
+  unservedIds: string[];
+  weightedArrivalMinutes: number;
+  explanation: string;
+  approvedAt?: string;
+}
+export interface RescuerAlert {
+  id: string;
+  planId: string;
+  teamId: string;
+  message: string;
+  status: 'simulated';
+  at: string;
+}
+export interface Board {
+  incidents: Incident[];
+  teams: Team[];
+  activity: Activity[];
+  revision: number;
+  blockedEdgeIds: string[];
+  plan: RoutePlan | null;
+  alerts: RescuerAlert[];
+}
 export type IncidentAction =
-  | { type: 'verify' }
-  | { type: 'assign'; teamId: string }
+  | { type: 'verify'; corrections?: { nodeId: string; people: number; quantity: number; priority: Priority } }
   | { type: 'deliver' };

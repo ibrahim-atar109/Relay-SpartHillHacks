@@ -2,7 +2,7 @@
 
 ## Start together
 1. Install Node.js 22.12+ or 24 LTS and pnpm.
-2. Run pnpm install and pnpm dev. Try simulated report → verification → assignment → delivery.
+2. Run pnpm install and pnpm dev. Follow docs/RUN_DEMO.md: verify collected data → generate routes → verify routes → alert rescuers.
 3. Agree on shared/contracts.ts and docs/API.md with the AWS pair.
 4. Merge the baseline before creating feature branches.
 
@@ -59,4 +59,4 @@ Read both sides of conflicts and preserve intended combined behavior; rerun chec
 5. Add voice and disruption behavior only after the core loop works.
 6. Freeze features, verify deployment, record and package the submission.
 
-Demo: approve Team Alder for the critical water request; simulate a report; verify it; assign Team Birch; confirm delivery. Observe counts, availability and activity update. The unresolved medicine request demonstrates dispatch blocked by missing location.
+Demo: review the six synthetic sources, verify their fields, resolve the library location, generate routes, review the proposed stops, verify routes, and click Alert rescuers. Observe the simulated outbox and team availability. The unresolved library request cannot be plotted until its location is confirmed. See docs/RUN_DEMO.md for Chrome launch instructions.

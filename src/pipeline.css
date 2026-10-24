@@ -1,0 +1,41 @@
+.pipeline-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 18px; }
+.pipeline-steps > div { display: grid; grid-template-columns: 28px 1fr; column-gap: 9px; row-gap: 4px; border: 1px solid #dfe4d8; padding: 14px; border-radius: 8px; color: #7e8973; }
+.pipeline-steps span { grid-row: span 2; border-radius: 50%; background: #e5e9de; height: 26px; display: grid; place-items: center; font-size: 11px; }
+.pipeline-steps strong { font-size: 11px; }
+.pipeline-steps small { font-size: 10px; }
+.pipeline-steps .current { border-color: #a7ba8e; background: #f0f5e6; color: #465f35; }
+.pipeline-steps .complete span { color: white; background: #416c50; }
+.workspace { min-height: 700px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin: 13px 0; color: #607053; font-size: 11px; }
+.field select, .field input { min-width: 0; width: 100%; border: 1px solid #d2dcc8; background: white; border-radius: 5px; padding: 9px; color: #30452b; font: inherit; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.confirmation { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; line-height: 1.6; color: #506546; margin-top: 12px; }
+.confirmation input { accent-color: #375b42; margin-top: 3px; flex-shrink: 0; width: 16px; height: 16px; }
+.review-hint { font-size: 11px; line-height: 1.8; color: #7a886c; margin-top: 12px; }
+.map-note { position: absolute; top: 66px; left: 16px; right: 16px; width: fit-content; max-width: calc(100% - 32px); padding: 10px 12px; border-radius: 5px; background: #ffffffef; font-size: 10px; line-height: 1.7; color: #5a6b50; }
+.map-error { top: 145px; }
+.plan-panel { border: 1px solid #d8e0cd; background: white; border-radius: 10px; margin-top: 20px; padding: 24px; }
+.plan-header { display: flex; gap: 18px; justify-content: space-between; align-items: center; }
+.plan-header h2 { font-size: 21px; letter-spacing: -.6px; margin-top: 10px; }
+.plan-header p, .plan-actions p { color: #78866d; font-size: 12px; margin-top: 8px; }
+.plan-empty { background: #f6f8f1; padding: 25px; margin-top: 20px; border: 1px dashed #d7dfca; border-radius: 7px; color: #7b886f; line-height: 1.8; font-size: 12px; }
+.plan-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 20px; color: #758268; font-size: 12px; }
+.plan-proposed { background: #f6ebce; color: #907435; }
+.plan-approved { background: #dfead4; color: #55733a; }
+.planner-explanation { color: #7d8972; font-size: 11px; line-height: 1.8; margin-top: 14px; max-width: 1000px; }
+.route-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 20px 0; }
+.route-card { padding: 18px; border: 1px solid #e0e5d9; border-top: 3px solid; border-radius: 6px; background: #fafbf7; }
+.route-card h3 { font-size: 14px; }
+.route-card p { margin-top: 6px; color: #839075; font-size: 11px; }
+.route-card ol { margin: 18px 0 0; padding-left: 18px; }
+.route-card li { padding: 0 0 13px 4px; font-size: 11px; color: #5f7650; }
+.route-card li strong, .route-card li span { display: block; margin-bottom: 5px; }
+.route-card li span { color: #89967c; font-size: 10px; }
+.plan-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 15px; border-top: 1px solid #e6eadf; }
+.plan-actions .confirmation { margin-top: 0; }
+.alert-outbox { border-top: 1px solid #dfe6d5; padding-top: 22px; margin-top: 22px; }
+.alert-outbox article { background: #f4f7ed; padding: 15px; margin-top: 12px; border-radius: 6px; }
+.alert-outbox h4 { justify-content: space-between; }
+.alert-outbox p { font-size: 12px; line-height: 1.9; color: #7a886c; margin-top: 8px; }
+@media(max-width:950px) { .pipeline-steps { grid-template-columns: 1fr 1fr; } .plan-header { align-items: flex-start; } .plan-actions { flex-direction: column; align-items: flex-start; } }
+@media(max-width:650px) { .pipeline-steps > div { padding: 10px; } .pipeline-steps strong { font-size: 10px; } .pipeline-steps small { font-size: 9px; } .plan-panel { padding: 16px; } .plan-header { flex-direction: column; } .plan-header h2 { font-size: 18px; } }
