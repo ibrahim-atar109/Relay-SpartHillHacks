@@ -61,7 +61,8 @@ describe('authenticated Bedrock handlers', () => {
     expect(plan.routes).toEqual(expected.routes);
     expect(plan.aiExplanation).toBe('Review the scenario route.');
     expect(plan.status).toBe('proposed');
-    expect(ask.mock.calls[0][1].incidents.every((i: { status: string }) => i.status === 'verified')).toBe(true);
+    expect(ask.mock.calls[0][1].incidents.map((i: { id: string }) => i.id)).toEqual(b.incidents.filter(i => i.status === 'verified').map(i => i.id));
+    expect(JSON.stringify(ask.mock.calls[0][1])).not.toContain('originalReport');
   });
   it('rejects duplicate IDs, non-finite counts and excessive search sizes', () => {
     const b = board();

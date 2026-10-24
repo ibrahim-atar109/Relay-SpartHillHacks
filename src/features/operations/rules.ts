@@ -5,22 +5,23 @@ import { generatePlan } from './planner';
 function log(board: Board, message: string): Board {
   return { ...board, activity: [{ id: crypto.randomUUID(), message, at: new Date().toISOString() }, ...board.activity] };
 }
-export function applyAction(board: Board, id: string, action: IncidentAction): Board {
+export function applyAction(board: Board, id: string, action: IncidentAction, realLocations = false): Board {
   const incident = board.incidents.find(item => item.id === id);
   if (!incident) throw new Error('Request no longer exists.');
   const at = new Date().toISOString();
   if (action.type === 'verify') {
     if (incident.status !== 'needs_review') throw new Error('Only unverified reports can be verified.');
     const fields = action.corrections ?? { nodeId: incident.nodeId || '', people: incident.people, quantity: incident.quantity, priority: incident.priority };
-    if (!nodes[fields.nodeId] || !Number.isInteger(fields.people) || fields.people < 1 || !Number.isInteger(fields.quantity) || fields.quantity < 1 || !['critical', 'high', 'normal'].includes(fields.priority)) throw new Error('Confirm a location, priority, and positive whole-number people/tote counts.');
+    const location = realLocations ? action.corrections?.location : nodes[fields.nodeId];
+    if (!location?.coordinates || !location.label.trim() || !Number.isInteger(fields.people) || fields.people < 1 || !Number.isInteger(fields.quantity) || fields.quantity < 1 || !['critical', 'high', 'normal'].includes(fields.priority)) throw new Error('Confirm a location, priority, and positive whole-number people/tote counts.');
     if (!action.corrections && incident.missingInfo.length) throw new Error('Resolve missing information before verification.');
     const category = action.corrections?.category ?? incident.category;
     if (!['water', 'food', 'medicine'].includes(category) || (incident.categoryNeedsReview && !action.corrections?.category)) throw new Error('Confirm a supported supply category.');
     return log({
       ...board, revision: board.revision + 1, plan: board.plan?.status === 'alerted' ? board.plan : null,
       incidents: board.incidents.map(item => item.id === id ? {
-        ...item, ...fields, category, categoryNeedsReview: false, location: nodes[fields.nodeId], status: 'verified', missingInfo: [],
-        summary: `${fields.quantity} supply totes of ${category} for ${fields.people} people at ${nodes[fields.nodeId].label}. Fields reviewed by coordinator.`,
+        ...item, ...fields, category, categoryNeedsReview: false, location, status: 'verified', missingInfo: [],
+        summary: `${fields.quantity} supply totes of ${category} for ${fields.people} people at ${location.label}. Fields reviewed by coordinator.`,
         updatedAt: at, verifiedAt: at,
       } : item),
     }, `${id} · Data verified and added to the map; any unsent plan must be regenerated`);

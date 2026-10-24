@@ -1,29 +1,47 @@
-import type { Board, Incident, IncidentAction } from '../../shared/contracts';
+import type { Board, Incident, IncidentAction, PlaceCandidate, Team } from '../../shared/contracts';
 import { nodes } from '../data/network';
-import { aiConfigured, bedrock } from './ai';
+import { aiConfigured, bedrock, authorizationHeaders, signOutAi } from './ai';
 import { createDemoBoard, syntheticIncident } from '../data/fixtures';
 import { alertRescuers, applyAction, approveRoutes, planRoutes } from '../features/operations/rules';
 
 export const isDemo = import.meta.env.VITE_DATA_MODE !== 'live';
 let demoBoard = createDemoBoard();
 const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+let version: number | undefined;
+const localAudio = new Map<string, { audioUrl?: string; recordings: { text: string; audioUrl: string }[] }>();
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!base) throw new Error('Set VITE_API_BASE_URL to connect the AWS API.');
-  const response = await fetch(`${base}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
-  if (!response.ok) throw new Error(`API request failed (${response.status}). Please retry.`);
-  return response.json() as Promise<T>;
+  const response = await fetch(`${base}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...authorizationHeaders(), ...init?.headers }, signal: AbortSignal.timeout(35000) });
+  if (response.status === 401) { signOutAi(); throw new Error('Your session expired. Sign in again.'); }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `API request failed (${response.status}). Please retry.`);
+  if (typeof data.version === 'number' && Array.isArray(data.incidents)) {
+    version = Math.max(version ?? 0, data.version);
+    data.incidents = data.incidents.map((i: Incident) => ({ ...i, ...localAudio.get(i.id) }));
+  }
+  return data as T;
 }
+const liveWrite = (path: string, body: object = {}, expectedVersion = version) => request<Board>(path, { method: 'POST', body: JSON.stringify({ ...body, expectedVersion }) });
 function update(operation: (board: Board) => Board) {
   demoBoard = operation(demoBoard);
   return structuredClone(demoBoard);
 }
 export const api = {
+  clearLocalSession: () => {
+    const urls = new Set([...localAudio.values()].flatMap(a => [a.audioUrl, ...a.recordings.map(r => r.audioUrl)]).filter((v): v is string => !!v));
+    urls.forEach(url => URL.revokeObjectURL(url)); localAudio.clear(); version = undefined;
+  },
   submitVoiceReport: async (transcript: string, audioUrl = '', recordings: { text: string; audioUrl: string }[] = []): Promise<Board> => {
-    if (!isDemo) throw new Error('Simulated calls are available only in the scenario workspace.');
     const originalReport = transcript.trim();
     if (!originalReport || originalReport.length > 8000) throw new Error('A call needs a transcript of 1–8,000 characters.');
     if ((audioUrl && !audioUrl.startsWith('blob:')) || recordings.some(r => !r.text.trim() || !r.audioUrl.startsWith('blob:'))) throw new Error('Only recordings made in this browser session can be attached.');
+    if (!isDemo) {
+      const next = await liveWrite('/incidents', { report: originalReport, source: 'voice' });
+      const incident = next.incidents.at(-1)!;
+      localAudio.set(incident.id, { audioUrl: audioUrl || undefined, recordings });
+      return { ...next, incidents: next.incidents.map(i => i.id === incident.id ? { ...i, ...localAudio.get(i.id) } : i) };
+    }
     if (demoBoard.incidents.length >= 40) throw new Error('Reset the scenario before collecting more than 40 reports.');
     const at = new Date().toISOString();
     const incident: Incident = {
@@ -38,7 +56,7 @@ export const api = {
     return update(board => ({ ...board, incidents: [incident, ...board.incidents], activity: [{ id: crypto.randomUUID(), message: `${incident.id} · Simulated call received; awaiting review`, at }, ...board.activity] }));
   },
   collectReport: async (report: string, source: Incident['source']): Promise<Board> => {
-    if (!isDemo) throw new Error('Bedrock intake currently uses the scenario board. Set VITE_DATA_MODE=demo.');
+    if (!isDemo) return liveWrite('/incidents', { report, source });
     if (demoBoard.incidents.length >= 40) throw new Error('Reset the scenario before collecting more than 40 reports.');
     const result = await bedrock.extract(report);
     const e = result.extraction;
@@ -54,7 +72,7 @@ export const api = {
     return update(board => ({ ...board, incidents: [...board.incidents, incident], activity: [{ id: crypto.randomUUID(), message: `${incident.id} · Bedrock extracted report; awaiting verification`, at: result.ai.at }, ...board.activity] }));
   },
   analyzeReport: async (id: string, followUp: string): Promise<Board> => {
-    if (!isDemo) throw new Error('Bedrock analysis currently uses the scenario board.');
+    if (!isDemo) return liveWrite(`/incidents/${encodeURIComponent(id)}/analyze`, { followUp });
     const before = demoBoard.incidents.find(i => i.id === id);
     if (!before || before.status !== 'needs_review') throw new Error('Only reports awaiting review can be analyzed.');
     const followUps = [...(before.followUps ?? []), ...(followUp.trim() ? [followUp.trim()] : [])];
@@ -73,9 +91,9 @@ export const api = {
   getBoard: async (): Promise<Board> => isDemo ? structuredClone(demoBoard) : request('/board'),
   act: async (id: string, action: IncidentAction): Promise<Board> => isDemo
     ? update(board => applyAction(board, id, action))
-    : request(`/incidents/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify(action) }),
+    : liveWrite(`/incidents/${encodeURIComponent(id)}/actions`, action),
   plan: async (): Promise<Board> => {
-    if (!isDemo) return request('/plans', { method: 'POST' });
+    if (!isDemo) return liveWrite('/plans');
     if (aiConfigured) {
       const before = demoBoard;
       const { plan } = await bedrock.plan(before);
@@ -88,10 +106,24 @@ export const api = {
   },
   approvePlan: async (id: string): Promise<Board> => isDemo
     ? update(board => approveRoutes(board, id))
-    : request(`/plans/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+    : liveWrite(`/plans/${encodeURIComponent(id)}/approve`),
   alertRescuers: async (id: string): Promise<Board> => isDemo
     ? update(board => alertRescuers(board, id))
-    : request(`/plans/${encodeURIComponent(id)}/alerts`, { method: 'POST' }),
+    : liveWrite(`/plans/${encodeURIComponent(id)}/alerts`),
+  geocode: async (address: string): Promise<PlaceCandidate[]> => {
+    const result = await request<{ candidates: PlaceCandidate[] }>('/locations/geocode', { method: 'POST', body: JSON.stringify({ address }) });
+    return result.candidates;
+  },
+  saveTeam: async (team: Pick<Team, 'name' | 'members' | 'capacity' | 'capabilities' | 'status'> & { location: Incident['location']; id?: string }, expectedVersion?: number): Promise<Board> => liveWrite(team.id ? `/teams/${encodeURIComponent(team.id)}` : '/teams', team, expectedVersion),
+  importDocument: async (file: File): Promise<Board> => {
+    if (isDemo) throw new Error('Private S3 import requires the connected workspace. Use Read .txt locally in demo mode.');
+    if (!file.name.toLowerCase().endsWith('.txt') || file.size > 32768) throw new Error('Choose a UTF-8 .txt file of at most 32KB and 8,000 characters.');
+    const upload = await request<{ key: string; url: string; fields: Record<string,string> }>('/uploads', { method: 'POST', body: '{}' });
+    const form = new FormData(); Object.entries(upload.fields).forEach(([key,value]) => form.append(key,value)); form.append('file', file);
+    const sent = await fetch(upload.url, { method: 'POST', body: form, signal: AbortSignal.timeout(20000) });
+    if (!sent.ok) throw new Error('Private upload failed. Check S3 CORS and permissions.');
+    return liveWrite('/incidents/import', { key: upload.key });
+  },
   simulateReport: async (): Promise<Board> => {
     if (!isDemo) throw new Error('Simulation is only available in demo mode.');
     if (demoBoard.incidents.length >= 7) throw new Error('All synthetic reports are loaded. Reset to replay.');

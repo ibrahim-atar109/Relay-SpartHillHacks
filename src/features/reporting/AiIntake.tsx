@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Sparkles, ChevronDown, LockKeyhole, CircleCheck } from 'lucide-react';
 import type { Incident } from '../../../shared/contracts';
 import { aiConfigured, aiPasswordPending, aiSignedIn, setAiPassword, signInAi, signOutAi } from '../../services/ai';
+import { isDemo } from '../../services/api';
 
-export function AiIntake({ open, onOpenChange, busy, onCollect, onSessionChange }: { open: boolean; onOpenChange: (open: boolean) => void; busy: boolean; onCollect: (report: string, source: Incident['source']) => Promise<boolean>; onSessionChange: () => void }) {
+export function AiIntake({ open, onOpenChange, busy, onCollect, onImport, onSessionChange }: { open: boolean; onOpenChange: (open: boolean) => void; busy: boolean; onCollect: (report: string, source: Incident['source']) => Promise<boolean>; onImport: (file: File) => Promise<boolean>; onSessionChange: () => void }) {
   const [signedIn, setSignedIn] = useState(aiSignedIn());
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -12,6 +13,7 @@ export function AiIntake({ open, onOpenChange, busy, onCollect, onSessionChange 
   const [error, setError] = useState('');
   const [report, setReport] = useState('');
   const [source, setSource] = useState<Incident['source']>('text');
+  const [file, setFile] = useState<File | null>(null);
   return <details id="report-intake" className="ai-intake" open={open} onToggle={e => onOpenChange(e.currentTarget.open)}>
     <summary><span className="intake-icon"><Sparkles size={19} /></span><span className="intake-title"><strong>A little clarity, from the first report.</strong><small>Collect a report with AI assistance</small></span><span className="intake-status">{aiSignedIn() ? <><CircleCheck size={14} />Signed in</> : <><LockKeyhole size={14} />{aiConfigured ? 'Sign in to AI' : 'Sample mode'}</>}</span><ChevronDown size={17} className="disclosure-chevron" /></summary>
     <div className="intake-body">
@@ -33,12 +35,22 @@ export function AiIntake({ open, onOpenChange, busy, onCollect, onSessionChange 
         <label className="field">{newPassword ? 'Choose a new password (12+ characters, uppercase, lowercase, number, symbol)' : 'Password'}<input type="password" autoComplete={newPassword ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} minLength={newPassword ? 12 : 1} required disabled={signingIn} /></label>
         <button className="button primary" disabled={signingIn}>{signingIn ? 'Signing in…' : newPassword ? 'Set password & sign in' : 'Sign in'}</button>
         {newPassword && <button type="button" className="button secondary" disabled={signingIn} onClick={() => { signOutAi(); setNewPassword(false); setSignedIn(false); setPassword(''); setError(''); onSessionChange(); }}>Back to sign in</button>}
-      </form> : <div className="ai-session"><span><CircleCheck size={15} />You’re signed in for this session.</span><button className="button secondary" disabled={busy} onClick={() => { signOutAi(); setSignedIn(false); onSessionChange(); }}>Sign out</button></div>}
+      </form> : <div className="ai-session"><span><CircleCheck size={15} />You’re signed in for this session.</span><button className="button secondary" disabled={busy} onClick={() => { signOutAi(); setSignedIn(false); setReport(''); setFile(null); setError(''); setUsername(''); onSessionChange(); }}>Sign out</button></div>}
       {error && <p className="error-banner" role="alert">{error}</p>}
       {aiSignedIn() && <form onSubmit={async e => { e.preventDefault(); if (await onCollect(report.trim(), source)) setReport(''); }}>
+        <label className="field">Read a UTF-8 .txt report (up to 8,000 characters)<input type="file" accept=".txt,text/plain" disabled={busy} onChange={async e => {
+          const selected = e.target.files?.[0]; setFile(null); setError(''); if (!selected) return;
+          try {
+            if (!selected.name.toLowerCase().endsWith('.txt') || selected.size > 32768) throw new Error('Choose a .txt file up to 32KB.');
+            const value = new TextDecoder('utf-8', { fatal: true }).decode(await selected.arrayBuffer());
+            if (!value.trim() || value.length > 8000 || value.includes('\u0000')) throw new Error('The file must contain 1–8,000 characters of plain text.');
+            setReport(value); setSource('text'); setFile(selected);
+          } catch (err) { setError(err instanceof Error ? err.message : 'Could not read this text file.'); }
+        }} /></label>
+        {!isDemo && file && <p className="review-hint">Review the text below and create a report, or <button type="button" className="button secondary" disabled={busy} onClick={async () => { if (await onImport(file)) { setFile(null); setReport(''); } }}>Import original file through private S3</button>. S3 uploads expire after one day; extracted text is saved in the board. The S3 action uses the original file, not edits below.</p>}
         <label className="field">Report source<select value={source} onChange={e => setSource(e.target.value as Incident['source'])} disabled={busy}><option value="text">Text message</option><option value="voice">Pasted voice transcript</option><option value="form">Form submission</option></select></label>
         <label className="field">Original report<textarea value={report} onChange={e => setReport(e.target.value)} maxLength={8000} rows={3} required disabled={busy} placeholder="Northside shelter needs 4 supply totes of water for 16 people. Supplies are running low." /></label>
-        <div className="ai-session"><p>AI organizes the details. You make the final check. Voice reports accept pasted transcripts.</p><button className="button primary" disabled={busy || !aiSignedIn() || !report.trim()}>{busy ? 'Organizing report…' : 'Create report'}</button></div>
+        <div className="ai-session"><p>AI organizes the details. You make the final check. {isDemo ? 'Reports stay in this tab.' : 'Report text and addresses are saved to the shared AWS workspace. Use fictional data for this hackathon.'}</p><button className="button primary" disabled={busy || !aiSignedIn() || !report.trim()}>{busy ? 'Organizing report…' : 'Create report'}</button></div>
       </form>}
     </>}
     </div>

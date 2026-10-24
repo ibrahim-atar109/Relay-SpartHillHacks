@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { opening, nextDispatcherTurn, type CallTurn } from './dispatcher';
 import { Mic, Square, X, Send } from 'lucide-react';
 import './voice.css';
+import { isDemo } from '../../services/api';
 
 type SpeechResult = { isFinal: boolean; 0: { transcript: string } };
 type Recognition = {
@@ -89,7 +90,7 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
         if (audioUrl) urls.current.push(audioUrl);
         if (finalText.current.trim()) {
           const reply: CallTurn = { speaker: 'caller', text: finalText.current.trim(), audioUrl };
-          setTurns(previous => { const next = [...previous, reply]; return [...next, { speaker: 'dispatcher', text: nextDispatcherTurn(next) }]; });
+          setTurns(previous => { const next = [...previous, reply]; return [...next, { speaker: 'dispatcher', text: nextDispatcherTurn(next, isDemo ? 'San José' : null) }]; });
         }
         setInterim(''); setPhase('ready');
       };
@@ -132,10 +133,10 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
   const callerTurns = turns.filter(turn => turn.speaker === 'caller');
   return <dialog ref={dialog} className="voice-dialog call-dialog" aria-labelledby="voice-title" onCancel={event => { event.preventDefault(); if (!saving) onClose(); }}>
     <div className="voice-header"><div><div className="eyebrow">TRAINING LINE · RULES-BASED DISPATCHER</div><h2 id="voice-title">Simulated 911 call</h2></div><button className="voice-close" aria-label="Close voice report" disabled={saving} onClick={onClose}><X size={20} /></button></div>
-    <p className="voice-intro">San José training exercise. Speak or type naturally; the simulated dispatcher asks follow-up questions.</p>
+    <p className="voice-intro">{isDemo ? 'San José training exercise.' : 'Training exercise.'} Speak or type naturally; the simulated dispatcher asks follow-up questions.</p>
     <div className="call-thread" aria-label="Call conversation">{turns.map((turn,index) => <article key={index} className={`call-turn ${turn.speaker}`}><span>{turn.speaker === 'dispatcher' ? 'Dispatcher · simulated' : 'You · voice transcript'}</span><p>{turn.text}</p>{turn.audioUrl && <audio controls src={turn.audioUrl} aria-label={`Your reply ${Math.ceil(index / 2)}`} />}</article>)}<div ref={threadEnd} /></div>
     <details className="call-guide"><summary>Need help getting started?</summary><p>Describe a fictional location, what happened, who needs help, and what you can see. For example: “I’m at the downtown community center. Six people need water and the street is flooded.” You do not have to follow a script.</p></details>
-    <p className="voice-privacy">Training only. No emergency service is contacted. Dispatcher prompts are rules-based. Speech recognition may use your browser’s online service. Audio stays in this tab and clears on reset/reload. After submission, you can analyze the transcript with Bedrock. Each spoken reply is limited to two minutes.</p>
+    <p className="voice-privacy">Training only. No emergency service is contacted. Dispatcher prompts are rules-based. Speech recognition may use your browser’s online service. Audio stays in this tab and clears on reset/reload. {isDemo ? 'After submission, you can analyze the transcript with Bedrock.' : 'Submitting sends the transcript to Bedrock and saves it to the shared AWS workspace. Audio is not uploaded. Use fictional personal details.'} Each spoken reply is limited to two minutes.</p>
     {!supported && <p className="voice-support-note">Voice transcription is unavailable here. Type your replies below, or use a supported browser such as Chrome on HTTPS.</p>}
     <div className="voice-controls"><button className={`button ${phase === 'recording' ? 'recording-button' : 'primary'}`} disabled={!supported || phase === 'starting' || phase === 'stopping' || saving} onClick={phase === 'recording' ? stop : () => void start()}>{phase === 'recording' ? <Square size={16} /> : <Mic size={17} />}{phase === 'recording' ? 'Send spoken reply' : phase === 'starting' ? 'Requesting microphone…' : phase === 'stopping' ? 'Transcribing…' : 'Speak your reply'}</button><span role="status">{phase === 'recording' ? `Recording · ${seconds}s` : 'Your microphone is off'}</span><button className="button secondary" disabled={active || saving || !window.speechSynthesis} onClick={() => { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(turns[turns.length-1].text)); }}>Read prompt aloud</button></div>
     {active && <div className="voice-transcript" aria-live="polite"><p>{transcript || 'Listening…'} <em>{interim}</em></p></div>}
@@ -145,7 +146,7 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
       event.preventDefault();
       if (active || saving || !typedReply.trim()) return;
       const reply: CallTurn = { speaker: 'caller', text: typedReply.trim() };
-      setTurns(previous => { const next = [...previous, reply]; return [...next, { speaker: 'dispatcher', text: nextDispatcherTurn(next) }]; });
+      setTurns(previous => { const next = [...previous, reply]; return [...next, { speaker: 'dispatcher', text: nextDispatcherTurn(next, isDemo ? 'San José' : null) }]; });
       setTypedReply(''); setError(''); setPhase('idle');
     }}><label className="field">Or type your reply<textarea rows={2} maxLength={2000} value={typedReply} onChange={e => setTypedReply(e.target.value)} disabled={active || saving} placeholder="Tell the dispatcher what you can see…" /></label><button type="submit" className="button secondary" disabled={active || saving || !typedReply.trim()}><Send size={15} />Send reply</button></form>
     <div className="voice-footer"><p>{callerTurns.length} {callerTurns.length === 1 ? 'reply' : 'replies'} captured · {recordings.length} recorded.<br />Finish at any time; missing details stay unverified.</p><button type="button" className="button primary" disabled={active || saving || !callerTurns.length || !!typedReply.trim()} onClick={async () => {

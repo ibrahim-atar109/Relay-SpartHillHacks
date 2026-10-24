@@ -44,18 +44,21 @@ export async function setAiPassword(password: string) {
   });
   acceptAuth(data);
 }
-async function request<T>(path: string, body: unknown): Promise<T> {
+export function authorizationHeaders(): Record<string, string> {
   if (!aiSignedIn()) {
     const expired = session !== null;
     session = null;
     // An AI action during first login must not erase the Cognito password challenge.
     throw new Error(pendingChallenge ? 'Finish setting your new password above before using AI features.' : expired ? 'Your AI session expired. Sign in above to continue.' : 'Sign in above to use AI features.');
   }
+  return { Authorization: `Bearer ${session!.token}` };
+}
+async function request<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${base}${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session!.token}` },
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authorizationHeaders() },
     body: JSON.stringify(body), signal: AbortSignal.timeout(35000),
   });
-  if (response.status === 401 || response.status === 403) { signOutAi(); throw new Error('AI session expired or access denied. Sign in again.'); }
+  if (response.status === 401) { signOutAi(); throw new Error('AI session expired or access denied. Sign in again.'); }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'AI request failed.');
   return data as T;

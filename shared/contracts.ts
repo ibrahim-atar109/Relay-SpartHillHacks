@@ -26,6 +26,7 @@ export interface Incident {
   clarificationQuestions?: string[];
   followUps?: string[];
   categoryNeedsReview?: boolean;
+  duplicateOf?: string[];
 }
 export interface Team {
   id: string;
@@ -36,8 +37,10 @@ export interface Team {
   capabilities: Incident['category'][];
   coordinates: [number, number];
   nodeId: string;
+  depotLabel?: string;
 }
-export interface Activity { id: string; message: string; at: string }
+export interface Activity { id: string; message: string; at: string; actorId?: string }
+export interface PlaceCandidate { label: string; coordinates: [number, number]; placeId: string }
 export interface RouteStop { incidentId: string; arrivalMinutes: number }
 export interface RoadLeg {
   incidentId: string;
@@ -79,6 +82,7 @@ export interface RescuerAlert {
   at: string;
 }
 export interface Board {
+  version?: number; // Persistence version for optimistic concurrency, independent of routing revision.
   incidents: Incident[];
   teams: Team[];
   activity: Activity[];
@@ -88,7 +92,7 @@ export interface Board {
   alerts: RescuerAlert[];
 }
 export type IncidentAction =
-  | { type: 'verify'; corrections?: { nodeId: string; people: number; quantity: number; priority: Priority; category?: Incident['category'] } }
+  | { type: 'verify'; corrections?: { nodeId: string; location?: Incident['location']; people: number; quantity: number; priority: Priority; category?: Incident['category'] } }
   | { type: 'deliver' };
 
 export interface AiProvenance { provider: 'bedrock'; modelId: string; requestId: string; at: string }

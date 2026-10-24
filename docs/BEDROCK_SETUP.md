@@ -10,7 +10,7 @@
 
 Architecture: Amplify React frontend → API Gateway with Cognito JWT authentication → Lambda → Bedrock Converse. Backend SDK credentials come from the Lambda execution role. No Bedrock API key or AWS secret is required in the frontend.
 
-This is a hackathon scenario workspace: board state is in browser memory and resets on reload. AWS route calculations use real driving roads between the sample San José coordinates, up to eight verified requests, six teams, standardized supply totes, preloaded supplies, two-minute stops and no return journey. The sample facility names are fictional. The provider snaps each endpoint to its road access point; no connectors are drawn from those road points through buildings to the sample pins. Traffic data is disabled for a consistent optimization snapshot. The fictional `c-e` closure is not applied to road routing. The offline optimizer still uses the fictional network, but the map never renders its straight-line geometry. Arbitrary-place geocoding, recording/transcription, external data feeds, persistent shared storage and actual notifications require separate integrations. Do not set `VITE_DATA_MODE=live`: that mode expects a separate full board API that this AI backend does not implement.
+There are now two modes: **demo** keeps the browser-memory sample scenario; **live** uses the persistent DynamoDB workspace with real addresses and editable depots. Follow [the persistence deployment and switch-over steps](../backend/README.md) for live mode. The remaining steps below describe optional AI setup and demo use. Both modes are hackathon prototypes: alerts remain simulated; traffic, verified hazard avoidance, live audio uploads and inbound messaging are not implemented.
 
 ## 1. Choose a Region and confirm a model works
 
@@ -30,7 +30,7 @@ If the playground itself fails, ask the hackathon AWS administrator to enable th
 
 ## 2. Build and deploy the backend
 
-The backend template is `backend/infra/template.yaml`. It creates a Cognito user pool/client, two authenticated HTTP endpoints, Lambda with a scoped Bedrock permission, and a seven-day log group. Only administrators can create coordinator accounts. API throttles and a Lambda concurrency limit bound concurrent inference.
+The backend template is `backend/infra/template.yaml`. It creates a Cognito user pool/client, authenticated AI and board endpoints, two Lambda functions, scoped AWS permissions, five DynamoDB tables, private S3 text staging, Cognito groups and seven-day log groups. Only administrators can create coordinator accounts. API throttles and a Lambda concurrency limit bound concurrent inference.
 
 Use Node.js 24, pnpm, the AWS CLI and AWS SAM CLI. Authenticate the CLI to the hackathon account using the organizer's method (for example `aws configure sso` then `aws sso login`). Never commit temporary access keys. Run `aws sts get-caller-identity` to verify the intended account. If you use a named CLI profile, pass it to AWS/SAM commands or select it in your shell.
 

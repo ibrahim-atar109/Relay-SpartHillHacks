@@ -1,46 +1,60 @@
-# Pipeline API contract
+# Relay API contract
 
-## Bedrock AI API (implemented)
+Canonical types: shared/contracts.ts. Coordinates are [longitude, latitude]. All routes require a Cognito ID token in Authorization: Bearer <token>, checked by API Gateway and Lambda. No AWS credentials belong in the frontend.
 
-The optional SAM backend provides `POST /ai/extract` (`{ report, followUp? }` → `ExtractionResponse`) and `POST /ai/plan` (`{ board }` → `PlanResponse`). Both require `Authorization: Bearer <Cognito ID token>` validated by API Gateway. See shared/contracts.ts and [Bedrock setup](BEDROCK_SETUP.md). These endpoints augment the browser scenario (`VITE_DATA_MODE=demo`); they do not provide persistent board storage. Route optimization uses Amazon Location's directed driving matrix between sample coordinates, then loads road polylines and instructions for the selected legs. Road plans identify `routing.provider=amazon-location`; each TeamRoute contains `roadLegs` with separate line strings, distance, duration and directions. Bedrock supplies extraction/clarification and a separately labeled route commentary, not coordinates or route arithmetic. Traffic is disabled; the fictional `blockedEdgeIds` are not real road closures and are not applied to road plans. If routing fails, the endpoint returns an error rather than schematic lines.
+## Connected workspace (implemented)
 
-The rest of this document describes the future full board API; these endpoints are not implemented by the AI backend.
+One shared workspace per deployed stack. All authenticated pool users can read it; only users in the **Coordinators** Cognito group can mutate it or invoke geocoding/uploads. The **Viewers** group is a convenient read-only designation. This is not per-tenant or per-report authorization.
 
-Canonical types: shared/contracts.ts. Coordinates are [longitude, latitude]; unknown location is null. Timestamps use ISO 8601. Responses use application/json.
-
-| Method | Path | Request | Response |
+| Method | Path | Body | Result |
 | --- | --- | --- | --- |
-| GET | /board | — | Board |
-| POST | /incidents/:id/actions | IncidentAction | Updated Board |
-| POST | /plans | — | Board containing a proposed RoutePlan |
-| POST | /plans/:id/approve | — | Board containing an approved plan |
-| POST | /plans/:id/alerts | — | Board with alert records and assigned requests |
+| GET | /board | — | Board with persistence version |
+| POST | /incidents | report, source, expectedVersion | Board; extracted report needs review |
+| POST | /incidents/import | key, expectedVersion | Board; private S3 UTF-8 text extracted with Bedrock |
+| POST | /incidents/:id/analyze | followUp, expectedVersion | Board; original report preserved |
+| POST | /incidents/:id/actions | IncidentAction, expectedVersion | Board |
+| POST | /teams | name, members, capacity, capabilities, status, location, expectedVersion | Board |
+| POST | /teams/:id | same team fields, expectedVersion | Board |
+| POST | /locations/geocode | address | candidates; no automatic selection |
+| POST | /uploads | {} | key, url, fields for a signed S3 POST |
+| POST | /plans | expectedVersion | Board containing server-computed proposed plan |
+| POST | /plans/:id/approve | expectedVersion | Board containing approved plan |
+| POST | /plans/:id/alerts | expectedVersion | Board with assignments and **simulated** outbox messages |
 
-Verify data:
+The frontend automatically includes the version from its last loaded board. Stale versions and changed workflow state return 409; invalid input returns 400; missing login 401; missing coordinator role 403. Errors have an error string. Never retry an unreviewed mutation automatically.
+
+Live verification example:
 ```json
-{"type":"verify","corrections":{"nodeId":"c","people":24,"quantity":6,"priority":"critical"}}
+{"expectedVersion":3,"type":"verify","corrections":{"nodeId":"","location":{"label":"Confirmed street address, city, state","coordinates":[-121.889,37.339]},"people":6,"quantity":2,"priority":"high","category":"water"}}
 ```
-Complete an already dispatched request:
-```json
-{"type":"deliver"}
-```
+The live server ignores browser node IDs and assigns unique routing keys. Geocoding uses Amazon Location Places with IntendedUse=Storage. A coordinator must explicitly select a result and confirm the address/access point; an address match does not establish that a report is true or access is safe. Team locations use the same coordinate convention.
 
-## Required lifecycle
-1. Collected reports start as needs_review. They must not become incident pins before verification.
-2. The coordinator reviews original evidence and corrects extracted fields. Verification records verifiedAt and increments board.revision.
-3. The planner uses only verified, undispatched requests and available teams. Generating a plan creates no assignments or alerts.
-4. Route approval records approvedAt. It creates no alerts.
-5. Explicit alerting reserves teams, assigns requests and creates messages. The demo stores simulated messages only. Production must use an authenticated backend delivery integration and actual queued/sent/failed/acknowledged statuses; extend RescuerAlert accordingly.
-6. Repeated alerting for the same plan must be idempotent. Use the plan ID as the backend idempotency key.
+## Storage and lifecycle
 
-Reject stale plan/revision combinations and infeasible assignments. Verify availability, total capacity, supply capability and route constraints again when alerting, in one authoritative backend transaction. Verifying additional data or completing an assignment invalidates an unsent plan. Return 409 for stale plans and 400 for invalid inputs.
+Five encrypted, pay-per-request DynamoDB tables hold reports, teams, plans, simulated alerts, and activity. Plans also holds the board metadata/version record. No seed data is inserted into live mode. Current entities are queried using a fixed workspace partition, pagination, strongly consistent reads and a version fence. All changed entities, the new actor-attributed audit entry and a conditional version increment are committed in one transaction. Historical plans and audit entries remain stored; the board returns the latest 100 activity events.
 
-## Demo assumptions
-Six initial fictional reports, one optional additional report, three teams and a 3×3 weighted network with one closed link. Quantities use standardized supply totes. Supplies are assumed preloaded; depot inventory is not modeled. Each team starts at its depot. Each stop takes 2 minutes; return travel is excluded. The optimizer supports at most eight verified requests, enumerates feasible stop orders, then chooses disjoint team routes using dynamic programming. It first maximizes served urgency weight, then minimizes weighted arrival time (critical 8, high 3, normal 1). This is exact for those assumptions, not a real road routing claim.
+Workflow rules are shared with the demo but enforced inside Lambda against persisted state: report verification, explicit route approval, capacity/capability/availability checks, assignments, completion, stale plan rejection and idempotent alert retries. Browser-submitted plans/teams/status/AI metadata are not trusted. Changing routing data invalidates unsent plans. Only completing all assigned stops releases a team. No external SMS, email or emergency service is contacted.
 
-## AWS handoff
-Keep Bedrock responsible for intake, clarification and explanation; use verified coordinates and trusted routing data for real routes. The current location selector is limited to demo network nodes. Replace it with backend geocoding/confirmed place IDs alongside a live routing implementation. Replace synthetic network overlays in OperationsMap when doing so.
+The UI polls every 15 seconds while visible and idle, and refreshes after actions. Report IDs and timestamps are server-generated. Exact normalized-text duplicates are flagged for review, not merged or suppressed; semantic duplicate detection is not implemented.
 
-Adapter: src/services/api.ts. Set VITE_DATA_MODE=live and VITE_API_BASE_URL in .env.local and restart Vite. API errors stay visible; no silent demo fallback. Live mode requires all revised endpoints. The initial load and explicit refresh retrieve server state; polling/streaming is a future integration.
+## Planning and limits
 
-Keep AWS credentials server-side. Add source provenance, reviewer identity, authorization, inventory, request versions and delivery acknowledgments when connecting live operations.
+Live mode uses confirmed report coordinates and real team/depot coordinates, not the nine demo nodes. Amazon Location supplies directed car travel times, then street-following geometry and instructions. For <=8 verified requests the solver is exact under its model; 9–40 use urgency-first greedy assignment plus up to three adjacent-stop improvement passes, without a global optimality claim. Capacity, supply compatibility and reachability remain hard constraints. Bedrock only explains computed routes.
+
+Hackathon guardrails: 200 total reports per stack, 20 teams, 40 verified requests per planning batch, 8,000 report characters, 4,000 total follow-up characters, one day for S3 uploads. Dispatch the current verified batch before verifying further requests. Oversized DynamoDB records/transactions fail explicitly. High-volume production needs archiving, paginated board APIs and asynchronous plan jobs; this is not an unlimited-volume emergency system.
+
+Travel excludes live traffic, verified hazard avoidance, return trips, loading and depot inventory; supplies are assumed preloaded, departure simultaneous, and each stop takes two minutes. The fictional c-e closure is never applied to real road routing. Coordinate snapping does not confirm an accessible entrance.
+
+## Text and audio evidence
+
+Read .txt locally fills the report editor for review. The optional S3 action uploads the original file privately using a signed POST policy limited to 32KB, text/plain, a per-user random key and a 120-second expiry; server import validates UTF-8 and the 8,000-character cap. Report text is then passed to Bedrock extraction and retained in DynamoDB; S3 is temporary staging, not permanent document evidence. Uploads cannot be read through a public URL. PDFs, images, OCR and automatic multi-report splitting are not implemented.
+
+Voice simulation uses browser speech recognition. Live submission persists the transcript, not audio. Blob URLs/recordings never go to AWS and playback is session-only. Transcribe, inbound SMS/email, external notifications, acknowledgement/delivery receipts and AppSync are not implemented.
+
+## Demo compatibility
+
+VITE_DATA_MODE=demo retains browser-memory fixtures, the fictional location selector, local reset, and optional authenticated POST /ai/extract and POST /ai/plan. Those AI endpoints have strict demo-network validation and are not persistence endpoints. Live uses the workspace endpoints instead. Both modes require human review before routing/assignment.
+
+## Personal information
+
+Use fictional reports for the hackathon. All signed-in users in this stack can see report text and addresses. Tokens stay in memory, API responses use no-store, logs exclude report bodies/model output, tables are encrypted and retained on stack deletion with point-in-time recovery enabled. Reports, historical plans and audit entries have no automatic expiry or erasure endpoint; backups can retain prior values. This is baseline protection, not a production privacy/compliance solution. Define consent, access boundaries, retention/erasure, redaction and an operational security process before using real personal information.

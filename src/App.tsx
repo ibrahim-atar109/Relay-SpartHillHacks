@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Radio, RefreshCw, Plus, Search, Users, ChevronDown, FlaskConical, Phone } from 'lucide-react';
 import type { Board, Incident, IncidentAction } from '../shared/contracts';
-import { aiConfigured } from './services/ai';
+import { aiConfigured, aiSignedIn } from './services/ai';
 import { AiIntake } from './features/reporting/AiIntake';
 import { VoiceReport } from './features/reporting/VoiceReport';
 import { api, isDemo } from './services/api';
@@ -9,6 +9,7 @@ import { OperationsMap } from './features/map/OperationsMap';
 import { IncidentQueue } from './features/incidents/IncidentQueue';
 import { IncidentDetail } from './features/incidents/IncidentDetail';
 import { PlanPanel } from './features/operations/PlanPanel';
+import { TeamEditor } from './features/operations/TeamEditor';
 
 export default function App() {
   const [board, setBoard] = useState<Board | null>(null);
@@ -17,11 +18,27 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [intakeOpen, setIntakeOpen] = useState(!isDemo);
   const [callOpen, setCallOpen] = useState(false);
-  const [, setAuthRevision] = useState(0);
+  const [authRevision, setAuthRevision] = useState(0);
   const select = useCallback((id: string) => setSelectedId(id), []);
-  useEffect(() => { api.getBoard().then(setBoard).catch(err => setError(err.message)); }, []);
+  useEffect(() => {
+    if (!isDemo && !aiSignedIn()) { api.clearLocalSession(); setBoard(null); setError(''); return; }
+    if (busy || callOpen) return;
+    let cancelled = false;
+    let loading = false;
+    const refresh = async () => {
+      if (loading) return;
+      if (!isDemo && !aiSignedIn()) { if (!cancelled) { api.clearLocalSession(); setBoard(null); setIntakeOpen(true); } return; }
+      loading = true;
+      try { const next = await api.getBoard(); if (!cancelled) setBoard(current => current && current.version !== undefined && next.version === current.version ? current : next); }
+      catch (err) { if (!cancelled) { if (!isDemo && !aiSignedIn()) setBoard(null); setError(err instanceof Error ? err.message : 'Could not refresh board.'); } }
+      finally { loading = false; }
+    };
+    void refresh();
+    const timer = isDemo ? undefined : setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [authRevision, busy, callOpen]);
   async function run(operation: () => Promise<Board>) {
     setBusy(true); setError('');
     try { setBoard(await operation()); }
@@ -47,24 +64,24 @@ export default function App() {
   return <div className="app-shell">
     <main>
       <header className="topbar"><a className="wordmark" href="#overview" aria-label="Relay home"><span className="brand-mark"><Radio size={23} /></span>relay<span className="brand-divider" /><small>Community response</small></a><div className="header-right"><nav className="topnav" aria-label="Workspace"><a href="#reports">Reports</a><a href="#routes">Routes</a></nav><span className="mode"><span className="live-dot" />{isDemo ? 'Demo workspace' : 'Connected workspace'}</span><span className="avatar" title="Coordinator"><Users size={17} /></span></div></header>
-      <div className="page-heading" id="overview"><div><div className="eyebrow">SAN JOSÉ · RELIEF OPERATIONS</div><h1>Every response starts here.</h1><p>A clear view of your community. A thoughtful plan for what’s next.</p></div><div className="heading-actions">
+      <div className="page-heading" id="overview"><div><div className="eyebrow">{isDemo ? 'SAN JOSÉ · RELIEF OPERATIONS' : 'SHARED WORKSPACE · RELIEF OPERATIONS'}</div><h1>Every response starts here.</h1><p>A clear view of your community. A thoughtful plan for what’s next.</p></div><div className="heading-actions">
         <button className="button secondary" disabled={busy} onClick={() => { select('REQ-1042'); setFilter('all'); setSearch(''); void run(() => isDemo ? api.reset() : api.getBoard()); }}><RefreshCw size={15} />{isDemo ? 'Reset scenario' : 'Refresh'}</button>
-        {isDemo && <button className="button primary" aria-expanded={intakeOpen} aria-controls="report-intake" onClick={() => setIntakeOpen(value => !value)}><Plus size={17} />New report</button>}
+        <button className="button primary" aria-expanded={intakeOpen} aria-controls="report-intake" onClick={() => setIntakeOpen(value => !value)}><Plus size={17} />New report</button>
       </div></div>
-      {isDemo && <div className="call-launch"><span><Phone size={16} /><span><strong>Practice the first response.</strong><small>A simulated 911 conversation, with voice or typed replies.</small></span></span><button className="button secondary" disabled={busy || !board} onClick={() => setCallOpen(true)}><Phone size={15} />Simulate 911 call</button></div>}
+      <div className="call-launch"><span><Phone size={16} /><span><strong>Practice the first response.</strong><small>A simulated 911 conversation, with voice or typed replies.</small></span></span><button className="button secondary" disabled={busy || !board} onClick={() => setCallOpen(true)}><Phone size={15} />Simulate 911 call</button></div>
       {callOpen && <VoiceReport onClose={() => setCallOpen(false)} onSubmit={async (transcript, audioUrl, recordings) => {
         const next = await api.submitVoiceReport(transcript, audioUrl, recordings);
-        setBoard(next); setSelectedId(next.incidents[0].id); setFilter('all'); setSearch(''); setError(''); setCallOpen(false);
+        setBoard(next); setSelectedId((isDemo ? next.incidents[0] : next.incidents.at(-1))!.id); setFilter('all'); setSearch(''); setError(''); setCallOpen(false);
       }} />}
-      {isDemo && <AiIntake open={intakeOpen} onOpenChange={setIntakeOpen} busy={busy} onCollect={collectReport} onSessionChange={() => setAuthRevision(value => value + 1)} />}
+      <AiIntake open={intakeOpen} onOpenChange={setIntakeOpen} busy={busy} onCollect={collectReport} onImport={async file => { setBusy(true); setError(''); try { const next = await api.importDocument(file); setBoard(next); setSelectedId(next.incidents.at(-1)!.id); setIntakeOpen(false); return true; } catch (err) { setError(err instanceof Error ? err.message : 'Document import failed.'); return false; } finally { setBusy(false); } }} onSessionChange={() => { setAuthRevision(value => value + 1); if (!isDemo && !aiSignedIn()) { setBoard(null); setCallOpen(false); } }} />
       <div className="pipeline-steps" aria-label="Approval pipeline">
         <div className={mapped.length ? 'complete' : 'current'}><span>1</span><strong>Review reports</strong><small>{incidents.filter(item => item.status === 'needs_review').length} to review</small></div>
         <div className={board?.plan ? 'complete' : mapped.length ? 'current' : ''}><span>2</span><strong>Plan routes</strong><small>{incidents.filter(item => item.status === 'verified').length} ready to route</small></div>
         <div className={board?.plan?.status === 'approved' || board?.plan?.status === 'alerted' ? 'complete' : board?.plan ? 'current' : ''}><span>3</span><strong>Approve plan</strong><small>{board?.plan?.status === 'proposed' ? 'Ready for your review' : 'Your final check'}</small></div>
-        <div className={board?.plan?.status === 'alerted' ? 'complete' : board?.plan?.status === 'approved' ? 'current' : ''}><span>4</span><strong>Notify teams</strong><small>{board?.alerts.length || 0} {isDemo ? 'simulated alerts' : 'alerts'}</small></div>
+        <div className={board?.plan?.status === 'alerted' ? 'complete' : board?.plan?.status === 'approved' ? 'current' : ''}><span>4</span><strong>Team outbox</strong><small>{board?.alerts.length || 0} simulated alerts</small></div>
       </div>
       {error && <div className="error-banner" role="alert">{error}<button onClick={() => void run(api.getBoard)}>Refresh board</button></div>}
-      {!board ? <div className="loading" role="status">{error ? 'Connect the API or retry to load the board.' : 'Collecting the synthetic scenario…'}</div> : <>
+      {!board ? <div className="loading" role="status">{!isDemo && !aiSignedIn() ? 'Sign in above to load the saved workspace.' : error ? 'Connect the API or retry to load the board.' : isDemo ? 'Collecting the synthetic scenario…' : 'Loading the saved workspace…'}</div> : <>
         <div className="overview-bar" id="reports"><h2>Response overview</h2><span><span className="live-dot" />{available} teams available</span></div>
         <section className="workspace" aria-label="Reports, map and verification">
           <div className="queue"><div className="queue-heading"><h2>Reports <span>{incidents.length}</span></h2></div>
@@ -76,7 +93,7 @@ export default function App() {
           <IncidentDetail incident={selected} busy={busy} onAction={onAction} onAnalyze={(id, followUp) => void run(() => api.analyzeReport(id, followUp))} />
         </section>
         <PlanPanel board={board} busy={busy} onGenerate={() => void run(api.plan)} onApprove={id => void run(() => api.approvePlan(id))} onAlert={id => void run(() => api.alertRescuers(id))} />
-        <section className="bottom-grid"><div className="team-strip"><div className="section-kicker">Your response teams</div><div className="teams">{board.teams.map(team => <div className="team-card" key={team.id}><span className="team-avatar">{team.name.split(' ')[1][0]}</span><div><strong>{team.name}</strong><small>{team.members} people · {team.capacity} totes · {team.capabilities.join(', ')}</small></div><span className={`team-status ${team.status}`}>{team.status}</span></div>)}</div></div>
+        <section className="bottom-grid"><div className="team-strip"><div className="section-kicker">Your response teams</div><div className="teams">{board.teams.map(team => <div className="team-card" key={team.id}><span className="team-avatar">{(team.name.trim().split(/\s+/).at(-1)?.charAt(0) || 'T')}</span><div><strong>{team.name}</strong><small>{team.members} people · {team.capacity} totes · {team.capabilities.join(', ')}</small><small>{team.depotLabel}</small></div><span className={`team-status ${team.status}`}>{team.status}</span></div>)}</div>{!isDemo && <TeamEditor teams={board.teams} version={board.version} busy={busy} onSaved={setBoard} onWorking={setBusy} />}</div>
           <details className="activity-strip"><summary>Recent activity<ChevronDown size={16} /></summary>{board.activity.slice(0, 6).map(item => <div className="activity-item" key={item.id}><span className="live-dot" /><span>{item.message}</span><time>{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>)}</details>
         </section>
       </>}

@@ -1,81 +1,35 @@
-import { askBedrock } from '../services/bedrock';
-import { InputError, object, text, validateBoard, validateExtraction } from '../validation';
-import { nodes } from '../../src/data/network';
-import { attachRoadGeometry, prepareRoadPlan, RoadRoutingError } from '../services/roads';
-
-type Event = { body?: string; isBase64Encoded?: boolean; rawPath?: string; requestContext?: { http?: { method?: string }; authorizer?: { jwt?: { claims?: Record<string, string> } } } };
-const reply = (statusCode: number, body: unknown) => ({ statusCode, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body) });
-
+import { InputError, object, text, validateBoard } from '../validation';
+import { RoadRoutingError } from '../services/roads';
+import { extractReport, reviewRoadPlan } from '../services/intelligence';
+export type Event = { body?: string; isBase64Encoded?: boolean; rawPath?: string; requestContext?: { http?: { method?: string }; authorizer?: { jwt?: { claims?: Record<string, string> } } } };
+export const reply = (statusCode: number, body: unknown) => ({ statusCode, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body) });
+export function parseBody(event: Event): Record<string, unknown> {
+  if (!event.body || event.body.length > 100000) throw new InputError('Request is empty or too large.');
+  try { return object(JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body)); }
+  catch { throw new InputError('Request must contain a valid JSON object.'); }
+}
+export function failure(error: unknown) {
+  if (error instanceof InputError) return reply(400, { error: error.message });
+  if (error instanceof RoadRoutingError) {
+    console.error('Road routing failed', { name: error.cause instanceof Error ? error.cause.name : error.name });
+    return reply(502, { error: error.message });
+  }
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  const metadata = error && typeof error === 'object' && '$metadata' in error ? error.$metadata as { requestId?: string } : undefined;
+  console.error('AI request failed', {
+    name, requestId: metadata?.requestId,
+    ...(name === 'AccessDeniedException' && error instanceof Error ? { message: error.message.slice(0, 4000), modelId: process.env.BEDROCK_MODEL_ID, region: process.env.AWS_REGION } : {}),
+  });
+  if (name === 'ThrottlingException') return reply(429, { error: 'AWS is busy. Wait a moment and try again.' });
+  return reply(502, { error: 'AWS request failed. Check the backend model, Region, permissions and CloudWatch logs.' });
+}
 export async function handler(event: Event) {
-  // API Gateway verifies the JWT. Also reject direct invocations without authenticated context.
   if (!event.requestContext?.authorizer?.jwt?.claims?.sub) return reply(401, { error: 'Sign in before using Bedrock.' });
   try {
     if (event.requestContext.http?.method !== 'POST') return reply(405, { error: 'Use POST.' });
-    if (!event.body || event.body.length > 100000) throw new InputError('Request is empty or too large.');
-    let parsed: unknown;
-    try { parsed = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body); }
-    catch { throw new InputError('Request must contain valid JSON.'); }
-    const body = object(parsed);
-    if (event.rawPath === '/ai/extract') {
-      const report = text(body.report, 'report');
-      const followUp = body.followUp === undefined ? undefined : text(body.followUp, 'follow-up', 4000);
-      const result = await askBedrock(`Extract a relief supply report for human review. Output this exact JSON shape:
-{"title":"short title","summary":"factual summary","category":null,"priority":null,"locationLabel":null,"nodeId":null,"people":null,"quantity":null,"missingInfo":[],"clarificationQuestions":[]}.
-category must be water, food, medicine, or null. priority must be critical, high, normal, or null. Counts must be positive integers or null.
-quantity means standardized supply totes ONLY: do not convert bottles, meals, doses or people into totes. Unknown counts are null.
-Do not infer coordinates. nodeId may only be one of the supplied fictional network nodes when the report explicitly identifies that place; otherwise null.
-Preserve ambiguity and conflicts, especially conflicting follow-up statements. Add missing/conflicting facts to missingInfo and specific questions to clarificationQuestions. Unsupported categories remain null. This is extraction, not medical advice or dispatch.`, { report, followUp, knownLocations: nodes });
-      let extraction;
-      try { extraction = validateExtraction(result.value); }
-      catch { throw new Error('Bedrock returned invalid report fields.'); }
-      const gaps = [...extraction.missingInfo];
-      if (!extraction.category) gaps.push('Confirm a supported supply category.');
-      if (!extraction.priority) gaps.push('Confirm urgency.');
-      if (!extraction.nodeId) gaps.push('Confirm a location on the scenario network.');
-      if (!extraction.people) gaps.push('Confirm the number of people.');
-      if (!extraction.quantity) gaps.push('Confirm quantity in standardized supply totes.');
-      extraction.missingInfo = [...new Set(gaps)];
-      return reply(200, { extraction, ai: result.ai });
-    }
-    if (event.rawPath === '/ai/plan') {
-      const board = validateBoard(body.board);
-      const signal = AbortSignal.timeout(25000);
-      const proposed = await prepareRoadPlan(board, signal);
-      const [plan, result] = await Promise.all([attachRoadGeometry(board, proposed, signal), askBedrock(`Explain the computed relief plan for its coordinator. Output {"explanation":"brief explanation","reviewNotes":["review item"]}.
-The solver first maximizes served urgency weight, then minimizes weighted arrival time (critical 8, high 3, normal 1). It checks capacity, capability and road reachability.
-Use only the supplied computed plan and inputs. Never invent routes, travel times, causes of non-service, weather, road conditions, or deliveries. Do not change assignments.
-Identify unserved IDs, tradeoffs, and matters needing human review. Travel times come from Amazon Location's driving matrix with traffic disabled; road geometry is loaded separately. The facility names are fictional sample locations. The fictional c-e closure is NOT a real road closure and is not applied. Supplies are assumed preloaded, stops take 2 minutes and return trips are excluded.`, { plan: proposed, incidents: board.incidents.filter(i => i.status === 'verified'), teams: board.teams }, signal)]);
-      let explanation: string; let reviewNotes: string[];
-      try {
-        const v = object(result.value);
-        explanation = text(v.explanation, 'explanation', 4000);
-        if (!Array.isArray(v.reviewNotes) || v.reviewNotes.length > 10) throw new Error();
-        reviewNotes = v.reviewNotes.map(n => text(n, 'review note', 600));
-      } catch { throw new Error('Bedrock returned invalid plan commentary.'); }
-      return reply(200, { plan: { ...plan, ai: result.ai, aiExplanation: explanation, reviewNotes } });
-    }
+    const body = parseBody(event);
+    if (event.rawPath === '/ai/extract') return reply(200, await extractReport(text(body.report, 'report'), body.followUp === undefined ? undefined : text(body.followUp, 'follow-up', 4000)));
+    if (event.rawPath === '/ai/plan') return reply(200, { plan: await reviewRoadPlan(validateBoard(body.board)) });
     return reply(404, { error: 'Unknown AI endpoint.' });
-  } catch (error) {
-    if (error instanceof InputError) return reply(400, { error: error.message });
-    if (error instanceof RoadRoutingError) {
-      const cause = error.cause instanceof Error ? error.cause : undefined;
-      console.error('Road routing failed', { name: cause?.name ?? error.name, message: cause?.message.slice(0, 4000) ?? error.message });
-      return reply(502, { error: error.message });
-    }
-    const name = error instanceof Error ? error.name : 'UnknownError';
-    // Do not log report bodies or model output.
-    const metadata = error && typeof error === 'object' && '$metadata' in error ? error.$metadata as { requestId?: string } : undefined;
-    console.error('AI request failed', {
-      name, requestId: metadata?.requestId,
-      // Access-denied messages identify the blocked principal, action/resource or
-      // account/model access requirement. Keep this diagnostic in backend logs only.
-      ...(name === 'AccessDeniedException' && error instanceof Error ? {
-        message: error.message.slice(0, 4000),
-        modelId: process.env.BEDROCK_MODEL_ID,
-        region: process.env.AWS_REGION,
-      } : {}),
-    });
-    if (name === 'ThrottlingException') return reply(429, { error: 'Bedrock is busy. Wait a moment and try again.' });
-    return reply(502, { error: 'Bedrock request failed. Check the backend model, Region, permissions and CloudWatch logs.' });
-  }
+  } catch (error) { return failure(error); }
 }

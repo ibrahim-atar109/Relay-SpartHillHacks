@@ -1,6 +1,5 @@
 import { CalculateRouteMatrixCommand, CalculateRoutesCommand, GeoRoutesClient } from '@aws-sdk/client-geo-routes';
 import type { Board, RoadLeg, RoutePlan } from '../../shared/contracts';
-import { nodes } from '../../src/data/network';
 import { generatePlan, type PathFinder } from '../../src/features/operations/planner';
 import { InputError } from '../validation';
 
@@ -20,13 +19,14 @@ export async function prepareRoadPlan(board: Board, signal: AbortSignal): Promis
   if (!requests.length) throw new InputError('Verify at least one report before generating routes.');
   const teams = board.teams.filter(t => t.status === 'available');
   if (!teams.length) throw new InputError('No teams are currently available.');
+  const positions = new Map([...teams.map(t => [t.nodeId, t.coordinates] as const), ...requests.map(i => [i.nodeId!, i.location.coordinates!] as const)]);
   const origins = [...new Set([...teams.map(t => t.nodeId), ...requests.map(i => i.nodeId!)])];
   const destinations = [...new Set(requests.map(i => i.nodeId!))];
   let matrix;
   try {
     matrix = await client.send(new CalculateRouteMatrixCommand({
-      Origins: origins.map(id => ({ Position: nodes[id].coordinates })),
-      Destinations: destinations.map(id => ({ Position: nodes[id].coordinates })),
+      Origins: origins.map(id => ({ Position: positions.get(id)! })),
+      Destinations: destinations.map(id => ({ Position: positions.get(id)! })),
       RoutingBoundary: { Geometry: { AutoCircle: { Margin: 2000 } } },
       TravelMode: 'Car', OptimizeRoutingFor: 'FastestRoute', Traffic: { Usage: 'IgnoreTrafficData' },
     }), { abortSignal: signal });
@@ -47,9 +47,9 @@ export async function prepareRoadPlan(board: Board, signal: AbortSignal): Promis
   catch (error) { throw new InputError(error instanceof Error ? error.message : 'No feasible road routes.'); }
   return {
     ...plan,
-    explanation: 'Assignments and stop order maximize served urgency weight, then minimize urgency-weighted arrival time using Amazon Location driving times and one-way road restrictions. Capacity and supply compatibility are checked. Assumes preloaded supplies, simultaneous departure, two minutes at each stop and no return trip. Travel times exclude live traffic; sample locations are snapped to road access points. The fictional demo closure is not a real road closure.',
+    explanation: `${requests.length > 8 ? 'Urgency-first greedy heuristic (not globally optimal).' : 'Exact assignment: maximize served urgency weight, then minimize urgency-weighted arrival time.'} Amazon Location provides driving times and one-way restrictions. Capacity and supply compatibility checked. Assumes preloaded supplies, simultaneous departure, two minutes per stop and no return trip. No live traffic or verified hazard closures; confirm each road access point.`,
     routing: { provider: 'amazon-location', travelMode: 'Car', calculatedAt: new Date().toISOString(), traffic: 'disabled', notices: [
-      'Sample locations are not verified real facilities. Confirm the road access point for each stop.',
+      'Confirm every reported address and road access point; sample locations are not verified real facilities.',
       'The scenario’s c-e closure does not represent a real road closure and is not applied to road routing.',
     ] },
   };
@@ -57,6 +57,7 @@ export async function prepareRoadPlan(board: Board, signal: AbortSignal): Promis
 
 /** Fetch each chosen leg independently; do not draw connectors across snapped access points. */
 export async function attachRoadGeometry(board: Board, plan: RoutePlan, signal: AbortSignal): Promise<RoutePlan> {
+  const positions = new Map([...board.teams.map(t => [t.nodeId, t.coordinates] as const), ...board.incidents.filter(i => i.nodeId && i.location.coordinates).map(i => [i.nodeId!, i.location.coordinates!] as const)]);
   const jobs = plan.routes.flatMap(route => {
     let from = board.teams.find(t => t.id === route.teamId)!.nodeId;
     return route.stops.map(stop => {
@@ -69,14 +70,14 @@ export async function attachRoadGeometry(board: Board, plan: RoutePlan, signal: 
   await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, async () => {
     while (cursor < jobs.length) {
       const job = jobs[cursor++];
-      if (job.from === job.to) {
+      if (job.from === job.to || JSON.stringify(positions.get(job.from)) === JSON.stringify(positions.get(job.to))) {
         results.set(`${job.teamId}/${job.incidentId}`, { incidentId: job.incidentId, lines: [], distanceMeters: 0, durationMinutes: 0, directions: [{ instruction: 'Already at this stop’s road access point.', distanceMeters: 0 }] });
         continue;
       }
       let response;
       try {
         response = await client.send(new CalculateRoutesCommand({
-          Origin: nodes[job.from].coordinates, Destination: nodes[job.to].coordinates,
+          Origin: positions.get(job.from)!, Destination: positions.get(job.to)!,
           TravelMode: 'Car', OptimizeRoutingFor: 'FastestRoute', Traffic: { Usage: 'IgnoreTrafficData' },
           LegGeometryFormat: 'Simple', LegAdditionalFeatures: ['TravelStepInstructions', 'Summary'],
           TravelStepType: 'Default', Languages: ['en'], MaxAlternatives: 0,
