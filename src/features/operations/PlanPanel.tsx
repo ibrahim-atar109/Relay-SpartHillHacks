@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Route, ShieldCheck, Send, CheckCircle2 } from 'lucide-react';
+import { Route, ShieldCheck, Send, CheckCircle2, ChevronDown, Sparkles } from 'lucide-react';
 import type { Board } from '../../../shared/contracts';
 import { isDemo } from '../../services/api';
 import { aiConfigured, aiSignedIn } from '../../services/ai';
@@ -12,13 +12,14 @@ export function PlanPanel({ board, busy, onGenerate, onApprove, onAlert }: {
   const verified = board.incidents.filter(item => item.status === 'verified').length;
   const unverified = board.incidents.filter(item => item.status === 'needs_review').length;
   const needsAiLogin = aiConfigured && isDemo && !aiSignedIn();
-  return <section className="plan-panel" aria-label="Route planning and rescuer alerts">
-    <div className="plan-header"><div><div className="section-kicker">STEPS 2–4 · PLAN, VERIFY, ALERT</div><h2>From verified reports to a rescue plan.</h2><p>{verified} verified requests ready · {unverified} unverified reports excluded</p>{needsAiLogin && <p role="status">Sign in at Report Intake above and finish setting your password to enable Bedrock route review.</p>}</div><button className="button primary" disabled={busy || !verified || needsAiLogin} onClick={onGenerate}><Route size={16} />{busy ? 'Working…' : aiConfigured && isDemo ? 'Optimize routes & review with Bedrock' : 'Generate optimal routes'}</button></div>
-    {!plan ? <div className="plan-empty">Verify collected data above, then run the routing agent. Review its proposed stops and arrival times here before any alerts are created.</div> : <>
+  return <section id="routes" className="plan-panel" aria-label="Route planning and rescuer alerts">
+    <div className="plan-header"><div><div className="section-kicker">The next step</div><h2>A plan for every helping hand.</h2><p>{verified} verified requests ready · {unverified} awaiting review</p>{needsAiLogin && <p role="status"><a href="#report-intake" onClick={() => { const intake = document.getElementById('report-intake'); if (intake instanceof HTMLDetailsElement) intake.open = true; }}>Sign in to AI</a> to enable route planning.</p>}</div><button className="button primary" disabled={busy || !verified || needsAiLogin} onClick={onGenerate}><Route size={17} />{busy ? 'Working…' : 'Plan routes'}</button></div>
+    {!plan ? <div className="plan-empty"><span className="empty-route-icon"><Route size={24} /></span><div><strong>Your next route starts with a verified report.</strong><p>Review a request above, then plan the stops. You’ll approve every route before teams are notified.</p></div></div> : <>
       <div className="plan-summary"><span className={`status plan-${plan.status}`}>{plan.status === 'proposed' ? 'Awaiting your route verification' : plan.status === 'approved' ? 'Routes verified · Ready to alert' : 'Plan dispatched'}</span><span>{plan.routes.length} teams · {plan.routes.reduce((sum, route) => sum + route.stops.length, 0)} stops · {Math.ceil(plan.routes.reduce((sum, route) => sum + route.travelMinutes, 0))} total drive minutes</span></div>
-      <p className="planner-explanation">{plan.explanation}</p>
+      <details className="plan-context"><summary>How this plan was built<ChevronDown size={15} /></summary><p className="planner-explanation">{plan.explanation}</p>
       {plan.routing ? <div className="road-notices"><strong>Road routes · Amazon Location · {new Date(plan.routing.calculatedAt).toLocaleTimeString()}</strong>{plan.routing.notices.map(note => <p key={note}>{note}</p>)}</div> : <p className="review-hint">This plan has no road geometry. Connect the updated AWS backend and generate routes again to display driving paths.</p>}
-      {plan.ai && <div className="ai-plan-review"><div className="section-kicker">BEDROCK PLAN REVIEW</div><p>{plan.aiExplanation}</p>{!!plan.reviewNotes?.length && <ul>{plan.reviewNotes.map(note => <li key={note}>{note}</li>)}</ul>}<small className="ai-provenance">{plan.ai.modelId} · AI commentary for coordinator review</small></div>}
+      </details>
+      {plan.ai && <div className="ai-plan-review"><div className="section-kicker"><Sparkles size={14} />Plan insights</div><p>{plan.aiExplanation}</p>{!!plan.reviewNotes?.length && <ul>{plan.reviewNotes.map(note => <li key={note}>{note}</li>)}</ul>}<details className="provenance-details"><summary>AI source details</summary><small className="ai-provenance">{plan.ai.modelId} · For coordinator review</small></details></div>}
       {!!plan.unservedIds.length && <div className="error-banner" role="status">Unserved requests: {plan.unservedIds.join(', ')}. No feasible capacity/access in this plan; these requests remain open.</div>}
       <div className="route-cards">{plan.routes.map((route, index) => <article className="route-card" key={route.teamId} style={{ borderTopColor: ['#336e91', '#8d649b', '#bc8038'][index % 3] }}><h3>{board.teams.find(team => team.id === route.teamId)?.name}</h3><p>{route.load} / {board.teams.find(team => team.id === route.teamId)?.capacity} totes · {Math.ceil(route.travelMinutes)} min driving{route.distanceMeters !== undefined && ` · ${(route.distanceMeters / 1000).toFixed(1)} km`}</p><ol>{route.stops.map(stop => {
         const incident = board.incidents.find(item => item.id === stop.incidentId)!;
@@ -29,6 +30,6 @@ export function PlanPanel({ board, busy, onGenerate, onApprove, onAlert }: {
       {plan.status === 'approved' && <div className="plan-actions"><p>Routes approved. Rescuers have not been alerted yet.</p><button className="button primary" disabled={busy} onClick={() => onAlert(plan.id)}><Send size={16} />{isDemo ? 'Alert rescuers · demo' : 'Alert rescuers'}</button></div>}
       {plan.status === 'alerted' && <div className="success"><CheckCircle2 size={18} />{isDemo ? 'Simulated alerts created. Review each team’s message below; no SMS or calls were sent.' : 'Alert requests submitted. Check delivery status below.'}</div>}
     </>}
-    {!!board.alerts.length && <div className="alert-outbox"><div className="section-kicker">{isDemo ? 'SIMULATED RESCUER OUTBOX' : 'RESCUER OUTBOX'}</div>{board.alerts.map(alert => <article key={alert.id}><h4>{board.teams.find(team => team.id === alert.teamId)?.name}<span className="status">{alert.status}</span></h4><p>{alert.message}</p></article>)}</div>}
+    {!!board.alerts.length && <details className="alert-outbox"><summary>{isDemo ? 'Simulated team messages' : 'Team messages'} · {board.alerts.length}<ChevronDown size={16} /></summary>{board.alerts.map(alert => <article key={alert.id}><h4>{board.teams.find(team => team.id === alert.teamId)?.name}<span className="status">{alert.status}</span></h4><p>{alert.message}</p></article>)}</details>}
   </section>;
 }

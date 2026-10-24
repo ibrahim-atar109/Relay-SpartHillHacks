@@ -23,15 +23,16 @@ function DetailForm({ incident, busy, onAction, onAnalyze }: { incident: Inciden
   const reviewing = incident.status === 'needs_review';
   const valid = !!category && !!nodeId && Number.isInteger(people) && people > 0 && Number.isInteger(quantity) && quantity > 0;
   return <aside className="detail">
-    <div className="section-kicker">STEP 1 · VERIFY COLLECTED DATA <span>{incident.id}</span></div>
+    <div className="section-kicker">Report details <span>{incident.id}</span></div>
     <h2>{incident.title}</h2><span className={`status status-${incident.status}`}>{statusLabels[incident.status]}</span>
     <div className="detail-section"><h4><MessageSquare size={15} /> {incident.ai ? 'Original report' : isDemo ? 'Synthetic source' : 'Original report'} · {incident.source}</h4><blockquote>“{incident.originalReport}”</blockquote>{incident.followUps?.map((entry, i) => <blockquote key={i}>Follow-up: {entry}</blockquote>)}</div>
-    <div className="detail-section"><h4><Sparkles size={15} /> {incident.ai ? 'Bedrock extraction' : isDemo ? 'Simulated extraction' : 'Collected data'}</h4><p>{incident.summary}</p>{incident.ai && <small className="ai-provenance">{incident.ai.modelId} · {new Date(incident.ai.at).toLocaleTimeString()}</small>}</div>
-    {reviewing && aiConfigured && isDemo && <div className="detail-section">
+    <div className="detail-section"><h4><Sparkles size={15} /> {incident.ai ? 'AI summary' : isDemo ? 'Sample summary' : 'Summary'}</h4><p>{incident.summary}</p>{incident.ai && <details className="provenance-details"><summary>AI source details</summary><small className="ai-provenance">{incident.ai.modelId} · {new Date(incident.ai.at).toLocaleTimeString()}</small></details>}</div>
+    {reviewing && aiConfigured && isDemo && <details className="detail-section followup-details" open={!!incident.clarificationQuestions?.length}>
+      <summary>Clarify this report</summary>
       {!!incident.clarificationQuestions?.length && <><h4>Questions to clarify with the reporter</h4><ul className="missing">{incident.clarificationQuestions.map(q => <li key={q}>{q}</li>)}</ul></>}
       <label className="field">Additional details from reporter (optional)<textarea rows={3} maxLength={2000} value={followUp} onChange={e => setFollowUp(e.target.value)} disabled={busy} /></label>
       <button type="button" className="button secondary full" disabled={busy || !aiSignedIn()} onClick={() => onAnalyze(incident.id, followUp)}><Sparkles size={15} />Analyze with Bedrock</button>
-    </div>}
+    </details>}
     {reviewing ? <form onSubmit={event => {
       event.preventDefault();
       if (confirmed && valid && category) onAction(incident.id, { type: 'verify', corrections: { nodeId, people, quantity, priority, category } });
