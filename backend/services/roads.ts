@@ -2,6 +2,8 @@ import { CalculateRouteMatrixCommand, CalculateRoutesCommand, GeoRoutesClient } 
 import type { Board, RoadLeg, RoutePlan } from '../../shared/contracts';
 import { generatePlan, type PathFinder } from '../../src/features/operations/planner';
 import { InputError } from '../validation';
+import { crossesBox } from '../../shared/geometry';
+const avoidance = (board: Board) => board.avoidAreas?.length ? { Avoid: { Areas: board.avoidAreas.map(area => ({ Geometry: { BoundingBox: area.bounds } })) } } : {};
 
 const client = new GeoRoutesClient({ maxAttempts: 1 });
 export class RoadRoutingError extends Error {
@@ -28,6 +30,7 @@ export async function prepareRoadPlan(board: Board, signal: AbortSignal): Promis
       Origins: origins.map(id => ({ Position: positions.get(id)! })),
       Destinations: destinations.map(id => ({ Position: positions.get(id)! })),
       RoutingBoundary: { Geometry: { AutoCircle: { Margin: 2000 } } },
+      ...avoidance(board),
       TravelMode: 'Car', OptimizeRoutingFor: 'FastestRoute', Traffic: { Usage: 'IgnoreTrafficData' },
     }), { abortSignal: signal });
   } catch (error) { throw new RoadRoutingError('Road travel times could not be loaded. Check Amazon Location permissions and retry.', error); }
@@ -78,6 +81,7 @@ export async function attachRoadGeometry(board: Board, plan: RoutePlan, signal: 
       try {
         response = await client.send(new CalculateRoutesCommand({
           Origin: positions.get(job.from)!, Destination: positions.get(job.to)!,
+          ...avoidance(board),
           TravelMode: 'Car', OptimizeRoutingFor: 'FastestRoute', Traffic: { Usage: 'IgnoreTrafficData' },
           LegGeometryFormat: 'Simple', LegAdditionalFeatures: ['TravelStepInstructions', 'Summary'],
           TravelStepType: 'Default', Languages: ['en'], MaxAlternatives: 0,
@@ -86,6 +90,7 @@ export async function attachRoadGeometry(board: Board, plan: RoutePlan, signal: 
       const route = response.Routes?.[0];
       if (!route?.Legs?.length || !validNumber(route.Summary?.Distance) || !validNumber(route.Summary?.Duration)) throw new RoadRoutingError('Amazon Location did not return a complete driving route.');
       const lines = route.Legs.map(leg => coordinates(leg.Geometry?.LineString));
+      if(board.avoidAreas?.some(area=>lines.some(line=>line.slice(1).some((point,index)=>crossesBox(line[index],point,area.bounds))))) throw new RoadRoutingError('A returned road route intersects a verified exercise hazard zone. No route was accepted. Adjust the exercise staging locations or review the hazard extent.');
       const directions = route.Legs.flatMap(leg => (leg.VehicleLegDetails?.TravelSteps ?? []).flatMap(step => step.Instruction ? [{ instruction: step.Instruction, distanceMeters: step.Distance ?? 0 }] : []));
       results.set(`${job.teamId}/${job.incidentId}`, { incidentId: job.incidentId, lines, distanceMeters: route.Summary.Distance, durationMinutes: route.Summary.Duration / 60, directions });
     }

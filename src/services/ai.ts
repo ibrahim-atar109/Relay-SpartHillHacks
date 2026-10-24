@@ -1,4 +1,5 @@
-import type { Board, ExtractionResponse, PlanResponse } from '../../shared/contracts';
+import type { Board, ExtractionResponse, PlanResponse, CallMessage, CallResponse } from '../../shared/contracts';
+import type { SimulationEvent, SimulationAnalysis, SimulationPlanResponse, VerifiedSimulationEvent } from '../../shared/simulation';
 
 const base = (import.meta.env.VITE_AI_API_URL || '').replace(/\/$/, '');
 const region = import.meta.env.VITE_AWS_REGION || '';
@@ -64,6 +65,9 @@ async function request<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 export const bedrock = {
+  converse: (messages: CallMessage[]) => request<CallResponse>('/ai/voice/converse', { messages }),
+  analyzeSimulation: (event: SimulationEvent) => request<SimulationAnalysis>('/ai/simulation/analyze', { eventId: event.id }),
+  planSimulation: (events: VerifiedSimulationEvent[]) => request<SimulationPlanResponse>('/ai/simulation/plan', { events }),
   extract: (report: string, followUp?: string) => request<ExtractionResponse>('/ai/extract', { report, followUp }),
   plan: (board: Board) => request<PlanResponse>('/ai/plan', { board: {
     ...board,

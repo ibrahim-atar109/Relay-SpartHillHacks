@@ -10,6 +10,15 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 describe('AI session and authenticated calls', () => {
+  it('sends real voice turns to the authenticated backend and exposes provenance, without a local reply fallback', async () => {
+    const auth=await import('./ai');const mock=vi.mocked(fetch);
+    mock.mockResolvedValueOnce(response({AuthenticationResult:{IdToken:'jwt',ExpiresIn:3600}}));await auth.signInAi('user','password');
+    mock.mockResolvedValueOnce(response({message:'Test-only mocked server response',ai:{modelId:'test',requestId:'test'}}));
+    const messages=[{role:'assistant' as const,text:'Test question'},{role:'user' as const,text:'Test caller input'}];
+    const result=await auth.bedrock.converse(messages);expect(result.ai.requestId).toBe('test');
+    expect(mock.mock.calls.at(-1)![0]).toBe('https://test.example/ai/voice/converse');expect(JSON.parse(mock.mock.calls.at(-1)![1]?.body as string)).toEqual({messages});
+    mock.mockResolvedValueOnce(response({error:'Bedrock denied'},502));await expect(auth.bedrock.converse(messages)).rejects.toThrow('Bedrock denied');
+  });
   it('excludes browser recording URLs and clips from backend planning requests', async () => {
     const mock = vi.mocked(fetch);
     const auth = await import('./ai');

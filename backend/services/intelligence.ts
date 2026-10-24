@@ -8,11 +8,13 @@ export async function extractReport(report: string, followUp?: string, live = fa
   const result = await askBedrock(`Extract a relief supply report for human review. Output this exact JSON shape:
 {"title":"short title","summary":"factual summary","category":null,"priority":null,"locationLabel":null,"nodeId":null,"people":null,"quantity":null,"missingInfo":[],"clarificationQuestions":[]}.
 category must be water, food, medicine, or null. priority must be critical, high, normal, or null. Counts must be positive integers or null.
+Also include "emergency":{"incidentDetails":null,"immediateThreats":null,"injuredPeople":null,"accessObstacles":null}. incidentDetails is reported factual text or null; threats/obstacles are arrays of reported facts or null when unknown; injuredPeople is a nonnegative reported integer or null. Unknown injuries are never zero. Extract facts ONLY from caller statements, never from the operator's questions or suggestions. Preserve unresolved contradictions in missingInfo. Do not force emergencies into supply categories.
 quantity means standardized supply totes ONLY: do not convert bottles, meals, doses or people into totes. Unknown counts are null.
 Do not infer coordinates. ${live ? 'Preserve the full reported address, city and region in locationLabel when provided. nodeId must be null; a coordinator will geocode and confirm the address.' : 'nodeId may only be one of the supplied fictional network nodes when the report explicitly identifies that place; otherwise null.'}
 Preserve ambiguity and conflicts, especially conflicting follow-up statements. Add missing/conflicting facts to missingInfo and specific questions to clarificationQuestions. Unsupported categories remain null. This is extraction, not medical advice or dispatch.`, { report, followUp, ...(!live ? { knownLocations: nodes } : {}) });
   let extraction;
   try { extraction = validateExtraction(result.value); } catch { throw new Error('Bedrock returned invalid report fields.'); }
+  extraction.emergency ??= { incidentDetails: null, immediateThreats: null, injuredPeople: null, accessObstacles: null };
   if (live) extraction.nodeId = null;
   const gaps = [...extraction.missingInfo];
   if (!extraction.category) gaps.push('Confirm a supported supply category.');

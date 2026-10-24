@@ -92,6 +92,24 @@ Resources:
             ApiId: !Ref Api
             Path: /ai/extract
             Method: POST
+        VoiceConversation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/voice/converse
+            Method: POST
+        SimulationAnalysis:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/simulation/analyze
+            Method: POST
+        SimulationPlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/simulation/plan
+            Method: POST
         Plan:
           Type: HttpApi
           Properties:

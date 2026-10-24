@@ -28,6 +28,11 @@ function update(operation: (board: Board) => Board) {
   return structuredClone(demoBoard);
 }
 export const api = {
+  completeVoiceCall: async (transcript: string, audioUrl = '', recordings: { text: string; audioUrl: string }[] = []): Promise<Board> => {
+    if (!isDemo) return api.submitVoiceReport(transcript, audioUrl, recordings);
+    await api.collectReport(transcript, 'voice');
+    return update(board => ({ ...board, incidents: board.incidents.map((incident, index) => index === board.incidents.length - 1 ? { ...incident, origin: 'participant', audioUrl: audioUrl || undefined, recordings } : incident) }));
+  },
   clearLocalSession: () => {
     const urls = new Set([...localAudio.values()].flatMap(a => [a.audioUrl, ...a.recordings.map(r => r.audioUrl)]).filter((v): v is string => !!v));
     urls.forEach(url => URL.revokeObjectURL(url)); localAudio.clear(); version = undefined;
@@ -67,7 +72,7 @@ export const api = {
       location: { label: e.locationLabel ?? 'Unconfirmed location', coordinates: null },
       nodeId: e.nodeId ?? undefined, people: e.people ?? 0, quantity: e.quantity ?? 0,
       unit: 'supply totes', source, originalReport: report, updatedAt: result.ai.at,
-      missingInfo: e.missingInfo, clarificationQuestions: e.clarificationQuestions, ai: result.ai,
+      missingInfo: e.missingInfo, emergency: e.emergency, clarificationQuestions: e.clarificationQuestions, ai: result.ai,
     };
     return update(board => ({ ...board, incidents: [...board.incidents, incident], activity: [{ id: crypto.randomUUID(), message: `${incident.id} · Bedrock extracted report; awaiting verification`, at: result.ai.at }, ...board.activity] }));
   },
@@ -85,7 +90,7 @@ export const api = {
       priority: e.priority ?? 'normal', nodeId: e.nodeId ?? undefined,
       location: { label: e.locationLabel ?? 'Unconfirmed location', coordinates: null },
       people: e.people ?? 0, quantity: e.quantity ?? 0, missingInfo: e.missingInfo,
-      clarificationQuestions: e.clarificationQuestions, followUps, ai: result.ai, updatedAt: result.ai.at,
+      emergency: e.emergency, clarificationQuestions: e.clarificationQuestions, followUps, ai: result.ai, updatedAt: result.ai.at,
     }), activity: [{ id: crypto.randomUUID(), message: `${id} · Bedrock analysis updated; human review required`, at: result.ai.at }, ...board.activity] }));
   },
   getBoard: async (): Promise<Board> => isDemo ? structuredClone(demoBoard) : request('/board'),

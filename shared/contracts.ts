@@ -27,6 +27,7 @@ export interface Incident {
   followUps?: string[];
   categoryNeedsReview?: boolean;
   duplicateOf?: string[];
+  emergency?: EmergencyDetails;
 }
 export interface Team {
   id: string;
@@ -82,6 +83,7 @@ export interface RescuerAlert {
   at: string;
 }
 export interface Board {
+  avoidAreas?: { id: string; bounds: [number, number, number, number] }[];
   version?: number; // Persistence version for optimistic concurrency, independent of routing revision.
   incidents: Incident[];
   teams: Team[];
@@ -97,6 +99,7 @@ export type IncidentAction =
 
 export interface AiProvenance { provider: 'bedrock'; modelId: string; requestId: string; at: string }
 export interface ReportExtraction {
+  emergency?: EmergencyDetails;
   title: string;
   summary: string;
   category: Incident['category'] | null;
@@ -110,3 +113,11 @@ export interface ReportExtraction {
 }
 export interface ExtractionResponse { extraction: ReportExtraction; ai: AiProvenance }
 export interface PlanResponse { plan: RoutePlan }
+export interface EmergencyDetails {
+  incidentDetails: string | null;
+  immediateThreats: string[] | null;
+  injuredPeople: number | null;
+  accessObstacles: string[] | null;
+}
+export interface CallMessage { role: 'user' | 'assistant'; text: string }
+export interface CallResponse { message: string; ai: AiProvenance }

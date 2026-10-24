@@ -10,8 +10,11 @@ import { IncidentQueue } from './features/incidents/IncidentQueue';
 import { IncidentDetail } from './features/incidents/IncidentDetail';
 import { PlanPanel } from './features/operations/PlanPanel';
 import { TeamEditor } from './features/operations/TeamEditor';
+import { KatrinaConsole } from './features/simulation/KatrinaConsole';
+import { BootScreen } from './features/shell/BootScreen';
 
 export default function App() {
+  const [view,setView] = useState<'operations'|'katrina'>('katrina');
   const [board, setBoard] = useState<Board | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>('REQ-1042');
   const [filter, setFilter] = useState('all');
@@ -50,7 +53,7 @@ export default function App() {
     try {
       const next = await api.collectReport(report, source);
       setBoard(next); setSelectedId(next.incidents[next.incidents.length - 1].id); setFilter('all'); setSearch('');
-      setIntakeOpen(false);
+      setIntakeOpen(false); setView('operations');
       return true;
     } catch (err) { setError(err instanceof Error ? err.message : 'Report collection failed.'); return false; }
     finally { setBusy(false); }
@@ -61,19 +64,22 @@ export default function App() {
   const selected = incidents.find(item => item.id === selectedId);
   const mapped = incidents.filter(item => item.status !== 'needs_review');
   const available = board?.teams.filter(team => team.status === 'available').length || 0;
-  return <div className="app-shell">
+  return <div className="app-shell"><BootScreen />
     <main>
-      <header className="topbar"><a className="wordmark" href="#overview" aria-label="Relay home"><span className="brand-mark"><Radio size={23} /></span>relay<span className="brand-divider" /><small>Community response</small></a><div className="header-right"><nav className="topnav" aria-label="Workspace"><a href="#reports">Reports</a><a href="#routes">Routes</a></nav><span className="mode"><span className="live-dot" />{isDemo ? 'Demo workspace' : 'Connected workspace'}</span><span className="avatar" title="Coordinator"><Users size={17} /></span></div></header>
-      <div className="page-heading" id="overview"><div><div className="eyebrow">{isDemo ? 'SAN JOSÉ · RELIEF OPERATIONS' : 'SHARED WORKSPACE · RELIEF OPERATIONS'}</div><h1>Every response starts here.</h1><p>A clear view of your community. A thoughtful plan for what’s next.</p></div><div className="heading-actions">
-        <button className="button secondary" disabled={busy} onClick={() => { select('REQ-1042'); setFilter('all'); setSearch(''); void run(() => isDemo ? api.reset() : api.getBoard()); }}><RefreshCw size={15} />{isDemo ? 'Reset scenario' : 'Refresh'}</button>
+      <header className="topbar"><a className="wordmark" href="#overview" aria-label="Relay home"><span className="brand-mark"><Radio size={23} /></span>relay<span className="brand-divider" /><small>Community response</small></a><div className="header-right"><nav className="topnav" aria-label="Workspace"><a href="#reports" onClick={()=>setView('operations')}>Reports</a><a href="#routes" onClick={()=>setView('operations')}>Routes</a></nav><span className="mode"><span className="live-dot" />{isDemo ? 'Demo workspace' : 'Connected workspace'}</span><span className="avatar" title="Coordinator"><Users size={17} /></span></div></header>
+      <div className="workspace-tabs" role="group" aria-label="Workspace view"><button className={view==='katrina'?'selected':''} aria-pressed={view==='katrina'} onClick={()=>setView('katrina')}>Katrina exercise</button><button className={view==='operations'?'selected':''} aria-pressed={view==='operations'} onClick={()=>setView('operations')}>Saved operations</button></div>
+      <div className="page-heading" id="overview"><div><div className="eyebrow">{view==='katrina'?'ST. BERNARD PARISH · TRAINING':isDemo ? 'SAN JOSÉ · RELIEF OPERATIONS' : 'SHARED WORKSPACE · RELIEF OPERATIONS'}</div><h1>Every response starts here.</h1><p>A clear view of your community. A thoughtful plan for what’s next.</p></div><div className="heading-actions">
+        <button hidden={view==='katrina'} className="button secondary" disabled={busy} onClick={() => { select('REQ-1042'); setFilter('all'); setSearch(''); void run(() => isDemo ? api.reset() : api.getBoard()); }}><RefreshCw size={15} />{isDemo ? 'Reset scenario' : 'Refresh'}</button>
         <button className="button primary" aria-expanded={intakeOpen} aria-controls="report-intake" onClick={() => setIntakeOpen(value => !value)}><Plus size={17} />New report</button>
       </div></div>
-      <div className="call-launch"><span><Phone size={16} /><span><strong>Practice the first response.</strong><small>A simulated 911 conversation, with voice or typed replies.</small></span></span><button className="button secondary" disabled={busy || !board} onClick={() => setCallOpen(true)}><Phone size={15} />Simulate 911 call</button></div>
+      <div className="call-launch"><span><Phone size={16} /><span><strong>Practice the first response.</strong><small>A simulated 911 conversation, with voice or typed replies.</small></span></span><button className="button secondary" disabled={busy || !aiConfigured || !aiSignedIn()} onClick={() => setCallOpen(true)}><Phone size={15} />Simulate 911 call</button></div>
       {callOpen && <VoiceReport onClose={() => setCallOpen(false)} onSubmit={async (transcript, audioUrl, recordings) => {
-        const next = await api.submitVoiceReport(transcript, audioUrl, recordings);
-        setBoard(next); setSelectedId((isDemo ? next.incidents[0] : next.incidents.at(-1))!.id); setFilter('all'); setSearch(''); setError(''); setCallOpen(false);
+        const next = await api.completeVoiceCall(transcript, audioUrl, recordings);
+        setBoard(next); setSelectedId(next.incidents.at(-1)!.id); setView('operations'); setFilter('all'); setSearch(''); setError(''); setCallOpen(false);
       }} />}
-      <AiIntake open={intakeOpen} onOpenChange={setIntakeOpen} busy={busy} onCollect={collectReport} onImport={async file => { setBusy(true); setError(''); try { const next = await api.importDocument(file); setBoard(next); setSelectedId(next.incidents.at(-1)!.id); setIntakeOpen(false); return true; } catch (err) { setError(err instanceof Error ? err.message : 'Document import failed.'); return false; } finally { setBusy(false); } }} onSessionChange={() => { setAuthRevision(value => value + 1); if (!isDemo && !aiSignedIn()) { setBoard(null); setCallOpen(false); } }} />
+      <AiIntake open={intakeOpen} onOpenChange={setIntakeOpen} busy={busy} onCollect={collectReport} onImport={async file => { setBusy(true); setError(''); try { const next = await api.importDocument(file); setBoard(next); setSelectedId(next.incidents.at(-1)!.id); setIntakeOpen(false); setView('operations'); return true; } catch (err) { setError(err instanceof Error ? err.message : 'Document import failed.'); return false; } finally { setBusy(false); } }} onSessionChange={() => { setAuthRevision(value => value + 1); if (!isDemo && !aiSignedIn()) { setBoard(null); setCallOpen(false); } }} />
+      <div hidden={view!=='katrina'}><KatrinaConsole active={view==='katrina'} /></div>
+      <div hidden={view!=='operations'}>
       <div className="pipeline-steps" aria-label="Approval pipeline">
         <div className={mapped.length ? 'complete' : 'current'}><span>1</span><strong>Review reports</strong><small>{incidents.filter(item => item.status === 'needs_review').length} to review</small></div>
         <div className={board?.plan ? 'complete' : mapped.length ? 'current' : ''}><span>2</span><strong>Plan routes</strong><small>{incidents.filter(item => item.status === 'verified').length} ready to route</small></div>
@@ -98,6 +104,7 @@ export default function App() {
         </section>
       </>}
       {isDemo && <details className="scenario-info"><summary><FlaskConical size={14} />About this demo<ChevronDown size={14} /></summary><div><p>{aiConfigured ? 'Bedrock assists with intake and plan review. Amazon Location supplies driving routes between sample locations. Reports stay in this tab and alerts are simulated.' : 'Explore synthetic reports and local planning. Connect the AWS backend to enable AI intake and road routing.'} Reloading resets the scenario.</p><button className="button secondary" disabled={busy || incidents.length >= 7} onClick={() => { select('REQ-1048'); setFilter('all'); setSearch(''); void run(api.simulateReport); }}><Plus size={15} />Load another sample report</button></div></details>}
+      </div>
       <footer><span className="footer-brand">relay</span><span>People first. Every step of the way.</span><span>Review. Plan. Respond.</span></footer>
     </main>
   </div>;

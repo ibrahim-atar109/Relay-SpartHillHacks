@@ -16,6 +16,9 @@ describe('SAM persistence deployment contract', () => {
     expect(template.Resources.WorkspaceFunction.Properties.Events.Workspace.Properties).toMatchObject({Path:'/{proxy+}',Method:'ANY'});
     expect(template.Resources.WorkspaceFunction.Properties.Events.Workspace.Properties.Auth).toBeUndefined();
     expect(template.Resources.WorkspaceFunction.Properties.Events.Preflight.Properties).toMatchObject({Method:'OPTIONS',Auth:{Authorizer:'NONE'}});
+    const events=template.Resources.AiFunction.Properties.Events;
+    expect(events.VoiceConversation.Properties.Path).toBe('/ai/voice/converse');expect(events.VoiceConversation.Properties.Auth).toBeUndefined();
+    expect(events.SimulationAnalysis.Properties.Path).toBe('/ai/simulation/analyze');expect(events.SimulationPlan.Properties.Path).toBe('/ai/simulation/plan');
   });
   it('keeps uploads private, encrypted, origin-restricted and short-lived', () => {
     const bucket = template.Resources.Uploads.Properties;

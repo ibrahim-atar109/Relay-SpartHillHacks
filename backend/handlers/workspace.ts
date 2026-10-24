@@ -55,7 +55,7 @@ export async function handler(event: Event) {
         id: `REQ-${crypto.randomUUID()}`, title: e.title, summary: e.summary, category: e.category ?? 'water', categoryNeedsReview: !e.category,
         priority: e.priority ?? 'normal', status: 'needs_review', location: { label: e.locationLabel ?? 'Unconfirmed address', coordinates: null },
         people: e.people ?? 0, quantity: e.quantity ?? 0, unit: 'supply totes', source: source as Incident['source'], origin: 'participant', originalReport: report,
-        missingInfo: e.missingInfo, clarificationQuestions: e.clarificationQuestions, ai: result.ai, updatedAt: result.ai.at, duplicateOf,
+        missingInfo: e.missingInfo, emergency: e.emergency, clarificationQuestions: e.clarificationQuestions, ai: result.ai, updatedAt: result.ai.at, duplicateOf,
       };
       board = audit({ ...board, incidents: [...board.incidents, incident] }, `${incident.id} · Report collected; human verification required${duplicateOf.length ? ' · Possible duplicate flagged' : ''}`);
     } else if (/^\/incidents\/[^/]+\/analyze$/.test(path)) {
@@ -65,7 +65,7 @@ export async function handler(event: Event) {
       const followUps = [...(before.followUps ?? []), ...(body.followUp ? [text(body.followUp, 'follow-up', 2000)] : [])];
       if (followUps.join('\n').length > 4000) throw new InputError('Follow-up history exceeds 4,000 characters.');
       const result = await extractReport(before.originalReport, followUps.join('\n') || undefined, true); const e = result.extraction;
-      board = audit({ ...board, incidents: board.incidents.map(i => i.id !== id ? i : { ...i, title: e.title, summary: e.summary, category: e.category ?? 'water', categoryNeedsReview: !e.category, priority: e.priority ?? 'normal', location: { label: e.locationLabel ?? 'Unconfirmed address', coordinates: null }, nodeId: undefined, people: e.people ?? 0, quantity: e.quantity ?? 0, missingInfo: e.missingInfo, clarificationQuestions: e.clarificationQuestions, followUps, ai: result.ai, updatedAt: result.ai.at }) }, `${id} · Bedrock analysis updated; human verification required`);
+      board = audit({ ...board, incidents: board.incidents.map(i => i.id !== id ? i : { ...i, title: e.title, summary: e.summary, category: e.category ?? 'water', categoryNeedsReview: !e.category, priority: e.priority ?? 'normal', location: { label: e.locationLabel ?? 'Unconfirmed address', coordinates: null }, nodeId: undefined, people: e.people ?? 0, quantity: e.quantity ?? 0, missingInfo: e.missingInfo, emergency: e.emergency, clarificationQuestions: e.clarificationQuestions, followUps, ai: result.ai, updatedAt: result.ai.at }) }, `${id} · Bedrock analysis updated; human verification required`);
     } else if (/^\/incidents\/[^/]+\/actions$/.test(path)) {
       const id = path.split('/')[2];
       let action: IncidentAction;

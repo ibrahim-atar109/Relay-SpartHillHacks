@@ -1,5 +1,15 @@
 # Persistent AWS workspace
 
+## Bedrock voice and Katrina exercise update
+
+The voice operator now uses authenticated POST /ai/voice/converse and real multi-turn Bedrock Converse messages, with the existing BEDROCK_MODEL_ID and execution-role permissions. Scripted dispatcher rules have been removed. Browser speech recognition supplies actual caller text; browser TTS reads model replies while microphone capture is disabled. Finishing extracts a report with reported incident details, threats, injury count and access obstacles (unknown remains null). Saved reports still require coordinator review.
+
+POST /ai/simulation/analyze analyzes canonical, clearly fictional training bulletins. POST /ai/simulation/plan routes only operator-verified assessment events with confirmed urgency. Katrina drill state is session-only and isolated from DynamoDB operations. It is not a historical replay or actual dispatch system. Modern Amazon Location roads are used; verified artificial fire/blockage boxes are passed as avoid areas, and returned polylines crossing those boxes are rejected. Assessment slot counts are scheduling units, not invented victim or supply counts. Staging coordinates are provisional and not certified safe access points.
+
+After building, redeploy the existing SAM stack to update BOTH Lambda bundles and add the three authenticated AI routes. No new credentials, API keys, tables or IAM service actions are needed beyond the existing Bedrock/Routes permissions. Keep the working Nova model and Region unchanged. The prebuilt relay-voice-katrina-backend.zip contains dist/ and infra/ for CloudShell; extract into a new directory and run the existing guided deployment process. Do not deploy only the frontend: old backend versions do not implement the new routes.
+
+Then rebuild/redeploy the frontend with the existing Amplify values. Sign in and test: opening message with model/request ID; two actual spoken or typed replies; TTS/microphone exclusion; completion into human review; start/pause/reset the Katrina feed; verify an event; pause and generate routes; approve; simulate deployment. No SMS, calls, email or real responder deployment occurs. A failing AWS call is displayed, not replaced with a mock reply. Local automated tests use explicitly test-only mocks; a real AWS response and real microphone must be checked in the deployed environment.
+
 The backend now implements the authenticated board API, DynamoDB storage, server-enforced workflow rules, real-address geocoding, editable teams/depots, and private S3 plain-text intake. Demo mode remains available. Nothing is deployed until the SAM stack is updated.
 
 ## Update the existing stack

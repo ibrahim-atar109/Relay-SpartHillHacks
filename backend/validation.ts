@@ -28,6 +28,11 @@ export function validateExtraction(value: unknown): ReportExtraction {
   const v = object(value);
   const nodeId = v.nodeId === null ? null : choice(v.nodeId, Object.keys(nodes), 'location node');
   return {
+    ...(v.emergency === undefined ? {} : { emergency: (() => {
+      const e = object(v.emergency);
+      const notes = (x: unknown, name: string) => x === null ? null : list(x, 8, name).map(n => text(n, name, 400));
+      return { incidentDetails: nullableText(e.incidentDetails, 'incident details'), injuredPeople: e.injuredPeople === null ? null : integer(e.injuredPeople, 'injured people', 0), immediateThreats: notes(e.immediateThreats,'immediate threats'), accessObstacles: notes(e.accessObstacles,'access obstacles') };
+    })() }),
     title: text(v.title, 'title', 160), summary: text(v.summary, 'summary', 2000),
     category: v.category === null ? null : choice(v.category, ['water', 'food', 'medicine'], 'category'),
     priority: v.priority === null ? null : choice(v.priority, ['critical', 'high', 'normal'], 'priority'),

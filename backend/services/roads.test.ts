@@ -14,6 +14,14 @@ function board() {
 }
 beforeEach(() => { send.mockReset(); });
 describe('Amazon Location road planning', () => {
+  it('passes exercise avoid boxes to both routing calls and rejects geometry crossing them', async () => {
+    const b=board();b.avoidAreas=[{id:'test-hazard',bounds:[-121.9005,37.3495,-121.8995,37.3505]}];
+    send.mockImplementation(async command=>({RouteMatrix:command.input.Origins.map(()=>[{Duration:600,Distance:3000}])}));
+    const plan=await prepareRoadPlan(b,signal());expect(send.mock.calls[0][0].input.Avoid.Areas[0].Geometry.BoundingBox).toEqual(b.avoidAreas[0].bounds);
+    send.mockResolvedValue({Routes:[{Summary:{Distance:3000,Duration:600},Legs:[{Geometry:{LineString:[[-121.901,37.351],[-121.899,37.349]]}}]}]});
+    await expect(attachRoadGeometry(b,plan,signal())).rejects.toThrow('intersects');
+    expect(send.mock.calls.at(-1)![0].input.Avoid.Areas).toHaveLength(1);
+  });
   it('optimizes with provider road costs, rather than the schematic grid', async () => {
     const b = board();
     send.mockImplementation(async command => ({ RouteMatrix: command.input.Origins.map(() => [{ Duration: 600, Distance: 3000 }]) }));

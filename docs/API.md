@@ -4,6 +4,18 @@ Canonical types: shared/contracts.ts. Coordinates are [longitude, latitude]. All
 
 ## Connected workspace (implemented)
 
+## AI voice and Katrina exercise endpoints
+
+All require the existing Cognito JWT and use the configured backend BEDROCK_MODEL_ID. No browser AWS credentials are used.
+
+- POST /ai/voice/converse: { messages: [{role: "assistant" | "user", text}] } -> { message, ai }. Empty messages starts a real model-generated greeting. Subsequent histories alternate assistant/user and end with user; bounded to 24 messages and 7,000 characters. No scripted reply fallback.
+- POST /ai/simulation/analyze: { eventId } -> validated SimulationAnalysis with model/request provenance. Only canonical explicitly fictional exercise bulletin IDs are accepted.
+- POST /ai/simulation/plan: { events: [{id,kind,priority}] } -> { plan,eventIds }. Events are explicitly human-confirmed drill inputs; the endpoint does not mutate the saved workspace or dispatch actual responders. Fire/blockage exclusions are artificial boxes; provider geometry intersecting them is rejected. Other verified events create provisional assessment visits, not invented victim/supply records.
+
+Final call transcripts use the existing intake endpoint and now include optional validated emergency fields: incidentDetails, immediateThreats, injuredPeople and accessObstacles. Unknown fields remain null, including unknown injury counts; explicit zero is distinct. Human verification remains required. Browser TTS is not Polly; browser recognition is not Amazon Transcribe.
+
+## Saved board endpoints
+
 One shared workspace per deployed stack. All authenticated pool users can read it; only users in the **Coordinators** Cognito group can mutate it or invoke geocoding/uploads. The **Viewers** group is a convenient read-only designation. This is not per-tenant or per-report authorization.
 
 | Method | Path | Body | Result |

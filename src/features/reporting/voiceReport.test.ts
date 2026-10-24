@@ -7,6 +7,14 @@ vi.mock('../../services/ai', () => ({ aiConfigured: true, bedrock: { extract, pl
 afterEach(async () => { await api.reset(); vi.restoreAllMocks(); });
 
 describe('911 simulation integrated from andrew01', () => {
+  it('automatically extracts a completed model conversation into human review, preserving unknown injuries and local audio', async () => {
+    // Test-only Bedrock response; production calls the configured AWS model.
+    extract.mockResolvedValue({ai:{provider:'bedrock',modelId:'test',requestId:'test',at:new Date().toISOString()},extraction:{title:'Caller intake',summary:'Reported smoke',category:null,priority:'high',nodeId:null,locationLabel:null,people:null,quantity:null,missingInfo:['Confirm location and supplies'],clarificationQuestions:['Where are you?'],emergency:{incidentDetails:'Reported smoke',immediateThreats:['Smoke'],injuredPeople:null,accessObstacles:null}}});
+    const transcript='Dispatcher (simulation): Test-only operator question.\nCaller: Reported smoke.';
+    const board=await api.completeVoiceCall(transcript,'blob:test-completion');const incident=board.incidents.at(-1)!;
+    expect(incident.status).toBe('needs_review');expect(incident.emergency?.injuredPeople).toBeNull();expect(incident.audioUrl).toBe('blob:test-completion');
+    expect(incident.categoryNeedsReview).toBe(true);expect(incident.ai?.requestId).toBe('test');expect(extract).toHaveBeenLastCalledWith(transcript);
+  });
   it('retains voice evidence and requires coordinator corrections before routing', async () => {
     const recordings = [{ text: 'Six people near downtown need food.', audioUrl: 'blob:test' }];
     const board = await api.submitVoiceReport('  Caller: Six people near downtown need food.  ', 'blob:test', recordings);
