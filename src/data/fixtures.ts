@@ -19,7 +19,7 @@ export function syntheticIncident(index: number): Incident {
     quantity: sample.quantity, unit: 'supply totes', source: sample.source,
     nodeId: unresolved ? undefined : sample.node,
     location: unresolved ? { label: 'Library branch not yet confirmed', coordinates: null } : nodes[sample.node],
-    originalReport: sample.report, summary: `${sample.quantity} supply totes of ${sample.category} requested for ${sample.people} people. Confirm the extracted fields against the source.`,
+    origin: 'synthetic', originalReport: `Hurricane Katrina exercise, Fort Lauderdale: ${sample.report}`, summary: `${sample.quantity} supply totes of ${sample.category} requested for ${sample.people} people. Confirm the extracted fields against the source.`,
     missingInfo: unresolved ? ['Use the caller’s follow-up to confirm the library branch.'] : [],
     updatedAt: new Date().toISOString(),
   };

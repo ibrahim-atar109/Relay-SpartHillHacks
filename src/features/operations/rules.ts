@@ -12,13 +12,14 @@ export function applyAction(board: Board, id: string, action: IncidentAction): B
   if (action.type === 'verify') {
     if (incident.status !== 'needs_review') throw new Error('Only unverified reports can be verified.');
     const fields = action.corrections ?? { nodeId: incident.nodeId || '', people: incident.people, quantity: incident.quantity, priority: incident.priority };
+    if (incident.origin === 'participant' && !['water', 'food', 'medicine'].includes(action.corrections?.category || '')) throw new Error('Confirm the supply category before verification.');
     if (!nodes[fields.nodeId] || !Number.isInteger(fields.people) || fields.people < 1 || !Number.isInteger(fields.quantity) || fields.quantity < 1 || !['critical', 'high', 'normal'].includes(fields.priority)) throw new Error('Confirm a location, priority, and positive whole-number people/tote counts.');
     if (!action.corrections && incident.missingInfo.length) throw new Error('Resolve missing information before verification.');
     return log({
       ...board, revision: board.revision + 1, plan: board.plan?.status === 'alerted' ? board.plan : null,
       incidents: board.incidents.map(item => item.id === id ? {
         ...item, ...fields, location: nodes[fields.nodeId], status: 'verified', missingInfo: [],
-        summary: `${fields.quantity} supply totes of ${item.category} for ${fields.people} people at ${nodes[fields.nodeId].label}. Fields reviewed by coordinator.`,
+        summary: `${fields.quantity} supply totes of ${action.corrections?.category || item.category} for ${fields.people} people at ${nodes[fields.nodeId].label}. Fields reviewed by coordinator.`,
         updatedAt: at, verifiedAt: at,
       } : item),
     }, `${id} · Data verified and added to the map; any unsent plan must be regenerated`);
@@ -67,7 +68,7 @@ export function alertRescuers(board: Board, planId: string): Board {
       message: `Approved plan: ${route.stops.map((stop, i) => {
         const request = board.incidents.find(item => item.id === stop.incidentId)!;
         return `${i + 1}. ${request.location.label}: ${request.quantity} totes of ${request.category}; arrival +${stop.arrivalMinutes} min`;
-      }).join(' → ')}. Avoid blocked network link c-e. Acknowledge with the coordinator. DEMO ONLY — no external message sent.`,
+      }).join(' → ')}. Avoid the currently closed corridors: ${board.blockedEdgeIds.join(', ') || 'none'}. Acknowledge with the coordinator. DEMO ONLY — no external message sent.`,
     })), ...board.alerts],
   }, `Simulated alerts created for ${plan.routes.length} rescuer teams`);
 }

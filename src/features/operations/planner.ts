@@ -30,9 +30,9 @@ function optionsFor(team: Team, requests: Incident[], blocked: string[]): Option
 }
 
 export function generatePlan(board: Board): RoutePlan {
-  const requests = board.incidents.filter(item => item.status === 'verified');
+  const allRequests = board.incidents.filter(item => item.status === 'verified');
+  const requests = [...allRequests].sort((a,b) => weights[b.priority] - weights[a.priority] || a.updatedAt.localeCompare(b.updatedAt)).slice(0,8);
   if (!requests.length) throw new Error('Verify at least one report before generating routes.');
-  if (requests.length > 8) throw new Error('The exact demo optimizer supports up to 8 verified requests at a time.');
   if (requests.some(item => !item.nodeId || !item.location.coordinates || item.missingInfo.length || item.quantity <= 0)) throw new Error('Verified requests contain incomplete routing data.');
   const teams = board.teams.filter(team => team.status === 'available');
   // Dynamic programming across teams finds the cheapest non-overlapping set of routes.
@@ -60,8 +60,8 @@ export function generatePlan(board: Board): RoutePlan {
   if (!winner.routes.length) throw new Error('No feasible routes: check available teams, capacity and network access.');
   return {
     id: crypto.randomUUID(), revision: board.revision, status: 'proposed', routes: winner.routes,
-    unservedIds: requests.filter((_, index) => !(winningMask & (1 << index))).map(item => item.id),
+    unservedIds: [...requests.filter((_, index) => !(winningMask & (1 << index))), ...allRequests.filter(item => !requests.includes(item))].map(item => item.id),
     weightedArrivalMinutes: winner.cost,
-    explanation: 'Exact optimizer on the synthetic network: maximize served urgency weight, then minimize urgency-weighted arrival time (critical 8, high 3, normal 1). Checks vehicle capacity, supply compatibility and blocked links. Assumes supplies are preloaded, simultaneous departure, 2 minutes per stop and no return trip. Schematic routes and estimated times are for this demo only.',
+    explanation: 'Bounded dispatch batch (up to 8 highest-priority verified requests): maximize served urgency weight, then minimize urgency-weighted arrival time (critical 8, high 3, normal 1). Checks vehicle capacity, supply compatibility and blocked links. Assumes supplies are preloaded, simultaneous departure, 2 minutes per stop and no return trip. Cached modern street geometry follows roads; closures exclude overlapping corridor segments. Travel times are simulated, not traffic estimates. Not a 2005 road reconstruction.',
   };
 }

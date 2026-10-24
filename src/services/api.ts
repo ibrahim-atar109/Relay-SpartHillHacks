@@ -1,4 +1,5 @@
 import type { Board, IncidentAction } from '../../shared/contracts';
+import { advanceScenario, loadSurge, setClosure } from '../features/simulation/engine';
 import { createDemoBoard, syntheticIncident } from '../data/fixtures';
 import { alertRescuers, applyAction, approveRoutes, planRoutes } from '../features/operations/rules';
 
@@ -17,6 +18,9 @@ function update(operation: (board: Board) => Board) {
   return structuredClone(demoBoard);
 }
 export const api = {
+  advance: async (): Promise<Board> => { if (!isDemo) throw new Error('Demo only'); return update(advanceScenario); },
+  surge: async (): Promise<Board> => { if (!isDemo) throw new Error('Demo only'); return update(loadSurge); },
+  closure: async (id: string, closed: boolean): Promise<Board> => { if (!isDemo) throw new Error('Demo only'); return update(board => setClosure(board, id, closed)); },
   getBoard: async (): Promise<Board> => isDemo ? structuredClone(demoBoard) : request('/board'),
   act: async (id: string, action: IncidentAction): Promise<Board> => isDemo
     ? update(board => applyAction(board, id, action))
@@ -33,6 +37,24 @@ export const api = {
   alertRescuers: async (id: string): Promise<Board> => isDemo
     ? update(board => alertRescuers(board, id))
     : request(`/plans/${encodeURIComponent(id)}/alerts`, { method: 'POST' }),
+  submitVoiceReport: async (transcript: string, audioUrl: string, recordings?: { text: string; audioUrl: string }[]): Promise<Board> => {
+    if (!isDemo) throw new Error('Voice intake is available only in the local simulation.');
+    const text = transcript.trim();
+    if (!text || !audioUrl.startsWith('blob:')) throw new Error('Record a voice report with a transcript first.');
+    return update(board => ({
+      ...board,
+      incidents: [{
+        id: `VOICE-${crypto.randomUUID().slice(0, 8)}`, title: 'Participant voice report',
+        origin: 'participant', source: 'voice', audioUrl, recordings, originalReport: text,
+        status: 'needs_review', category: 'water', priority: 'normal', people: 0, quantity: 0,
+        unit: 'supply totes', location: { label: 'Caller location unconfirmed', coordinates: null },
+        summary: 'Original participant transcript. No automatic extraction: category and urgency are placeholders until reviewed.',
+        missingInfo: ['Confirm location, supply category, urgency, and counts from the caller. Unsupported needs should remain in review.'],
+        updatedAt: new Date().toISOString(),
+      }, ...board.incidents],
+      activity: [{ id: crypto.randomUUID(), message: 'Participant voice report received · Awaiting review', at: new Date().toISOString() }, ...board.activity],
+    }));
+  },
   simulateReport: async (): Promise<Board> => {
     if (!isDemo) throw new Error('Simulation is only available in demo mode.');
     if (demoBoard.incidents.length >= 7) throw new Error('All synthetic reports are loaded. Reset to replay.');
@@ -43,6 +65,7 @@ export const api = {
   },
   reset: async (): Promise<Board> => {
     if (!isDemo) throw new Error('Reset is only available in demo mode.');
+    demoBoard.incidents.forEach(item => { if (item.audioUrl) URL.revokeObjectURL(item.audioUrl); item.recordings?.forEach(recording => URL.revokeObjectURL(recording.audioUrl)); });
     demoBoard = createDemoBoard(); return structuredClone(demoBoard);
   },
 };

@@ -12,6 +12,9 @@ export interface Incident {
   quantity: number;
   unit: string;
   source: 'text' | 'voice' | 'form';
+  origin?: 'synthetic' | 'participant';
+  recordings?: { text: string; audioUrl: string }[];
+  audioUrl?: string; // Session-only browser blob URL; never sent to the API.
   originalReport: string;
   summary: string;
   missingInfo: string[];
@@ -59,6 +62,8 @@ export interface RescuerAlert {
   at: string;
 }
 export interface Board {
+  simulationMinute?: number;
+  situationFeed?: { id: string; minute: number; text: string }[];
   incidents: Incident[];
   teams: Team[];
   activity: Activity[];
@@ -68,5 +73,5 @@ export interface Board {
   alerts: RescuerAlert[];
 }
 export type IncidentAction =
-  | { type: 'verify'; corrections?: { nodeId: string; people: number; quantity: number; priority: Priority } }
+  | { type: 'verify'; corrections?: { nodeId: string; people: number; quantity: number; priority: Priority; category?: Incident['category'] } }
   | { type: 'deliver' };
