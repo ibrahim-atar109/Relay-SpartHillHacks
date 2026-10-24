@@ -62,5 +62,9 @@ async function request<T>(path: string, body: unknown): Promise<T> {
 }
 export const bedrock = {
   extract: (report: string, followUp?: string) => request<ExtractionResponse>('/ai/extract', { report, followUp }),
-  plan: (board: Board) => request<PlanResponse>('/ai/plan', { board }),
+  plan: (board: Board) => request<PlanResponse>('/ai/plan', { board: {
+    ...board,
+    // Browser blob references are useful only in this tab and must not go to AWS.
+    incidents: board.incidents.map(({ audioUrl: _audio, recordings: _recordings, ...incident }) => incident),
+  } }),
 };

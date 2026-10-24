@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Radio, RefreshCw, Plus, Search, Users, ChevronDown, FlaskConical } from 'lucide-react';
+import { Radio, RefreshCw, Plus, Search, Users, ChevronDown, FlaskConical, Phone } from 'lucide-react';
 import type { Board, Incident, IncidentAction } from '../shared/contracts';
 import { aiConfigured } from './services/ai';
 import { AiIntake } from './features/reporting/AiIntake';
+import { VoiceReport } from './features/reporting/VoiceReport';
 import { api, isDemo } from './services/api';
 import { OperationsMap } from './features/map/OperationsMap';
 import { IncidentQueue } from './features/incidents/IncidentQueue';
@@ -17,6 +18,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
   const [, setAuthRevision] = useState(0);
   const select = useCallback((id: string) => setSelectedId(id), []);
   useEffect(() => { api.getBoard().then(setBoard).catch(err => setError(err.message)); }, []);
@@ -49,6 +51,11 @@ export default function App() {
         <button className="button secondary" disabled={busy} onClick={() => { select('REQ-1042'); setFilter('all'); setSearch(''); void run(() => isDemo ? api.reset() : api.getBoard()); }}><RefreshCw size={15} />{isDemo ? 'Reset scenario' : 'Refresh'}</button>
         {isDemo && <button className="button primary" aria-expanded={intakeOpen} aria-controls="report-intake" onClick={() => setIntakeOpen(value => !value)}><Plus size={17} />New report</button>}
       </div></div>
+      {isDemo && <div className="call-launch"><span><Phone size={16} /><span><strong>Practice the first response.</strong><small>A simulated 911 conversation, with voice or typed replies.</small></span></span><button className="button secondary" disabled={busy || !board} onClick={() => setCallOpen(true)}><Phone size={15} />Simulate 911 call</button></div>}
+      {callOpen && <VoiceReport onClose={() => setCallOpen(false)} onSubmit={async (transcript, audioUrl, recordings) => {
+        const next = await api.submitVoiceReport(transcript, audioUrl, recordings);
+        setBoard(next); setSelectedId(next.incidents[0].id); setFilter('all'); setSearch(''); setError(''); setCallOpen(false);
+      }} />}
       {isDemo && <AiIntake open={intakeOpen} onOpenChange={setIntakeOpen} busy={busy} onCollect={collectReport} onSessionChange={() => setAuthRevision(value => value + 1)} />}
       <div className="pipeline-steps" aria-label="Approval pipeline">
         <div className={mapped.length ? 'complete' : 'current'}><span>1</span><strong>Review reports</strong><small>{incidents.filter(item => item.status === 'needs_review').length} to review</small></div>

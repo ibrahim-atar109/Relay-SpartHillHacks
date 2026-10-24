@@ -12,6 +12,9 @@ export interface Incident {
   quantity: number;
   unit: string;
   source: 'text' | 'voice' | 'form';
+  origin?: 'synthetic' | 'participant';
+  audioUrl?: string; // Session-only recording; excluded from backend requests.
+  recordings?: { text: string; audioUrl: string }[];
   originalReport: string;
   summary: string;
   missingInfo: string[];

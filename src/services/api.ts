@@ -19,6 +19,24 @@ function update(operation: (board: Board) => Board) {
   return structuredClone(demoBoard);
 }
 export const api = {
+  submitVoiceReport: async (transcript: string, audioUrl = '', recordings: { text: string; audioUrl: string }[] = []): Promise<Board> => {
+    if (!isDemo) throw new Error('Simulated calls are available only in the scenario workspace.');
+    const originalReport = transcript.trim();
+    if (!originalReport || originalReport.length > 8000) throw new Error('A call needs a transcript of 1–8,000 characters.');
+    if ((audioUrl && !audioUrl.startsWith('blob:')) || recordings.some(r => !r.text.trim() || !r.audioUrl.startsWith('blob:'))) throw new Error('Only recordings made in this browser session can be attached.');
+    if (demoBoard.incidents.length >= 40) throw new Error('Reset the scenario before collecting more than 40 reports.');
+    const at = new Date().toISOString();
+    const incident: Incident = {
+      id: `VOICE-${crypto.randomUUID().slice(0, 8)}`, title: 'Simulated 911 call', origin: 'participant',
+      source: 'voice', audioUrl: audioUrl || undefined, recordings, originalReport,
+      status: 'needs_review', category: 'water', categoryNeedsReview: true, priority: 'normal', people: 0, quantity: 0,
+      unit: 'supply totes', location: { label: 'Caller location unconfirmed', coordinates: null },
+      summary: 'Participant call transcript. Supply category, urgency, location and counts need review. Use Analyze with Bedrock for AI extraction.',
+      missingInfo: ['Confirm the supply category, urgency, location and counts. This training call has not been sent to emergency services.'],
+      updatedAt: at,
+    };
+    return update(board => ({ ...board, incidents: [incident, ...board.incidents], activity: [{ id: crypto.randomUUID(), message: `${incident.id} · Simulated call received; awaiting review`, at }, ...board.activity] }));
+  },
   collectReport: async (report: string, source: Incident['source']): Promise<Board> => {
     if (!isDemo) throw new Error('Bedrock intake currently uses the scenario board. Set VITE_DATA_MODE=demo.');
     if (demoBoard.incidents.length >= 40) throw new Error('Reset the scenario before collecting more than 40 reports.');
@@ -84,6 +102,8 @@ export const api = {
   },
   reset: async (): Promise<Board> => {
     if (!isDemo) throw new Error('Reset is only available in demo mode.');
+    const urls = new Set(demoBoard.incidents.flatMap(i => [i.audioUrl, ...(i.recordings?.map(r => r.audioUrl) ?? [])]).filter((u): u is string => !!u));
+    urls.forEach(url => URL.revokeObjectURL(url));
     demoBoard = createDemoBoard(); return structuredClone(demoBoard);
   },
 };

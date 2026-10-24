@@ -10,6 +10,18 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 describe('AI session and authenticated calls', () => {
+  it('excludes browser recording URLs and clips from backend planning requests', async () => {
+    const mock = vi.mocked(fetch);
+    const auth = await import('./ai');
+    mock.mockResolvedValueOnce(response({ AuthenticationResult: { IdToken: 'jwt', ExpiresIn: 3600 } }));
+    await auth.signInAi('user', 'password');
+    mock.mockResolvedValueOnce(response({ plan: {} }));
+    await auth.bedrock.plan({ incidents: [{ originalReport: 'Caller report', audioUrl: 'blob:private', recordings: [{ text: 'Caller report', audioUrl: 'blob:clip' }] }] } as never);
+    const payload = mock.mock.calls[1][1]?.body as string;
+    expect(payload).not.toContain('blob:');
+    expect(payload).not.toContain('recordings');
+    expect(JSON.parse(payload).board.incidents[0].originalReport).toBe('Caller report');
+  });
   it('requires sign-in before sending a report', async () => {
     const { bedrock } = await import('./ai');
     await expect(bedrock.extract('report')).rejects.toThrow('Sign in');
@@ -33,7 +45,7 @@ describe('AI session and authenticated calls', () => {
     const auth = await import('./ai');
     mock.mockResolvedValueOnce(response({ ChallengeName: 'NEW_PASSWORD_REQUIRED', Session: 'challenge-to-preserve' }));
     expect(await auth.signInAi('user', 'temporary')).toBe('new_password');
-    await expect(auth.bedrock.plan({} as never)).rejects.toThrow('Finish setting your new password');
+    await expect(auth.bedrock.plan({ incidents: [] } as never)).rejects.toThrow('Finish setting your new password');
     expect(mock).toHaveBeenCalledTimes(1);
     expect(auth.aiPasswordPending()).toBe(true);
     mock.mockResolvedValueOnce(response({ AuthenticationResult: { IdToken: 'jwt', ExpiresIn: 3600 } }));

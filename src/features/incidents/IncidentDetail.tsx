@@ -16,17 +16,17 @@ function DetailForm({ incident, busy, onAction, onAnalyze }: { incident: Inciden
   const [nodeId, setNodeId] = useState(incident.nodeId || '');
   const [people, setPeople] = useState(incident.people);
   const [quantity, setQuantity] = useState(incident.quantity);
-  const [priority, setPriority] = useState<Priority>(incident.priority);
+  const [priority, setPriority] = useState<Priority | ''>(incident.origin === 'participant' && !incident.ai && incident.status === 'needs_review' ? '' : incident.priority);
   const [confirmed, setConfirmed] = useState(false);
   const [category, setCategory] = useState<Incident['category'] | ''>(incident.categoryNeedsReview ? '' : incident.category);
   const [followUp, setFollowUp] = useState('');
   const reviewing = incident.status === 'needs_review';
-  const valid = !!category && !!nodeId && Number.isInteger(people) && people > 0 && Number.isInteger(quantity) && quantity > 0;
+  const valid = !!priority && !!category && !!nodeId && Number.isInteger(people) && people > 0 && Number.isInteger(quantity) && quantity > 0;
   return <aside className="detail">
     <div className="section-kicker">Report details <span>{incident.id}</span></div>
     <h2>{incident.title}</h2><span className={`status status-${incident.status}`}>{statusLabels[incident.status]}</span>
-    <div className="detail-section"><h4><MessageSquare size={15} /> {incident.ai ? 'Original report' : isDemo ? 'Synthetic source' : 'Original report'} · {incident.source}</h4><blockquote>“{incident.originalReport}”</blockquote>{incident.followUps?.map((entry, i) => <blockquote key={i}>Follow-up: {entry}</blockquote>)}</div>
-    <div className="detail-section"><h4><Sparkles size={15} /> {incident.ai ? 'AI summary' : isDemo ? 'Sample summary' : 'Summary'}</h4><p>{incident.summary}</p>{incident.ai && <details className="provenance-details"><summary>AI source details</summary><small className="ai-provenance">{incident.ai.modelId} · {new Date(incident.ai.at).toLocaleTimeString()}</small></details>}</div>
+    <div className="detail-section"><h4><MessageSquare size={15} /> {incident.origin === 'participant' ? 'Participant call' : incident.ai ? 'Original report' : isDemo ? 'Synthetic source' : 'Original report'} · {incident.source}</h4><blockquote>“{incident.originalReport}”</blockquote>{incident.recordings?.length ? incident.recordings.map((r, i) => <audio key={r.audioUrl} controls preload="none" src={r.audioUrl} aria-label={`Caller reply ${i + 1}`} />) : incident.audioUrl && <audio controls preload="none" src={incident.audioUrl} aria-label="Original caller recording" />}{incident.followUps?.map((entry, i) => <blockquote key={i}>Follow-up: {entry}</blockquote>)}</div>
+    <div className="detail-section"><h4><Sparkles size={15} /> {incident.ai ? 'AI summary' : incident.origin === 'participant' ? 'Awaiting analysis' : isDemo ? 'Sample summary' : 'Summary'}</h4><p>{incident.summary}</p>{incident.ai && <details className="provenance-details"><summary>AI source details</summary><small className="ai-provenance">{incident.ai.modelId} · {new Date(incident.ai.at).toLocaleTimeString()}</small></details>}</div>
     {reviewing && aiConfigured && isDemo && <details className="detail-section followup-details" open={!!incident.clarificationQuestions?.length}>
       <summary>Clarify this report</summary>
       {!!incident.clarificationQuestions?.length && <><h4>Questions to clarify with the reporter</h4><ul className="missing">{incident.clarificationQuestions.map(q => <li key={q}>{q}</li>)}</ul></>}
@@ -35,14 +35,14 @@ function DetailForm({ incident, busy, onAction, onAnalyze }: { incident: Inciden
     </details>}
     {reviewing ? <form onSubmit={event => {
       event.preventDefault();
-      if (confirmed && valid && category) onAction(incident.id, { type: 'verify', corrections: { nodeId, people, quantity, priority, category } });
+      if (confirmed && valid && category && priority) onAction(incident.id, { type: 'verify', corrections: { nodeId, people, quantity, priority, category } });
     }}>
       <p className="review-hint">Review and correct these fields. This report stays off the map until you verify it.</p>
       {!!incident.missingInfo.length && <ul className="missing">{incident.missingInfo.map(info => <li key={info}>{info}</li>)}</ul>}
       <label className="field">Supply category<select value={category} required onChange={e => { setCategory(e.target.value as Incident['category']); setConfirmed(false); }}><option value="">Confirm supply category</option><option value="water">Water</option><option value="food">Food</option><option value="medicine">Medicine</option></select></label>
       <label className="field">Confirmed location<select value={nodeId} onChange={event => { setNodeId(event.target.value); setConfirmed(false); }} required><option value="">Choose the confirmed location</option>{Object.entries(nodes).map(([id, node]) => <option key={id} value={id}>{node.label}</option>)}</select></label>
       <div className="field-row"><label className="field">People affected<input type="number" min="1" step="1" value={people || ''} onChange={event => { setPeople(Number(event.target.value)); setConfirmed(false); }} required /></label><label className="field">Supply totes<input type="number" min="1" step="1" value={quantity || ''} onChange={event => { setQuantity(Number(event.target.value)); setConfirmed(false); }} required /></label></div>
-      <label className="field">Urgency<select value={priority} onChange={event => { setPriority(event.target.value as Priority); setConfirmed(false); }}><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option></select></label>
+      <label className="field">Urgency<select value={priority} required onChange={event => { setPriority(event.target.value as Priority); setConfirmed(false); }}><option value="">Confirm urgency after review</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option></select></label>
       <label className="confirmation"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I checked the source and confirmed these details.</label>
       <button className="button primary full" disabled={busy || !valid || !confirmed}><ShieldCheck size={16} />Verify data & add to map</button>
     </form> : <>
