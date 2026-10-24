@@ -98,6 +98,18 @@ Resources:
             ApiId: !Ref Api
             Path: /ai/plan
             Method: POST
+        CallTurn:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/call-turn
+            Method: POST
+        CallReport:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/call-report
+            Method: POST
   Coordinators:
     Type: AWS::Cognito::UserPoolGroup
     Properties:

@@ -12,6 +12,10 @@ Architecture: Amplify React frontend → API Gateway with Cognito JWT authentica
 
 There are now two modes: **demo** keeps the browser-memory sample scenario; **live** uses the persistent DynamoDB workspace with real addresses and editable depots. Follow [the persistence deployment and switch-over steps](../backend/README.md) for live mode. The remaining steps below describe optional AI setup and demo use. Both modes are hackathon prototypes: alerts remain simulated; traffic, verified hazard avoidance, live audio uploads and inbound messaging are not implemented.
 
+## Updating an existing stack for AI call intake
+
+The AI function now also serves `POST /ai/call-turn` and `POST /ai/call-report`. These are new API Gateway routes, so **uploading Lambda code alone is not enough**: run `pnpm run build:backend` and `sam deploy` with your existing parameters (same `BedrockModelId`/`BedrockResourceArns`). No new IAM permissions are needed beyond `bedrock:InvokeModel` on the model already configured. Verify by signing in on the site and opening **Simulate 911 call**: the first assistant message must arrive from Bedrock (the call shows an error, never a scripted reply, if it fails).
+
 ## 1. Choose a Region and confirm a model works
 
 Use the AWS account supplied by the hackathon. In the console, record the Region in the top right. Keep Bedrock, Lambda, API Gateway and Cognito in that Region for this setup.

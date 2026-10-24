@@ -4,14 +4,19 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Incident, Team, RoutePlan } from '../../../shared/contracts';
 import { roadFeatures } from './routeGeometry';
 import { isDemo } from '../../services/api';
+import { edges, nodes } from '../../data/network';
+import type { Hazard } from '../../data/katrinaFeed';
+
+const hazardIcons: Record<Hazard['kind'], string> = { flood: '🌊', levee: '⚠️', fire: '🔥', outage: '⚡', road: '⛔', spill: '🛢️' };
+const closureFeatures = (ids: string[]): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: edges.filter(e => ids.includes(e.id)).map(e => ({ type: 'Feature', properties: { id: e.id }, geometry: { type: 'LineString', coordinates: [nodes[e.from].coordinates, nodes[e.to].coordinates] } })) });
 
 const fallbackStyle: StyleSpecification = {
   version: 8,
-  sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' } },
-  layers: [{ id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': -0.85, 'raster-opacity': 0.8 } }],
+  sources: { base: { type: 'raster', tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', 'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>' } },
+  layers: [{ id: 'base', type: 'raster', source: 'base' }],
 };
 
-export function OperationsMap({ incidents, teams, plan, selectedId, onSelect }: { incidents: Incident[]; teams: Team[]; plan: RoutePlan | null; blockedEdgeIds: string[]; selectedId: string | null; onSelect: (id: string) => void }) {
+export function OperationsMap({ incidents, teams, plan, blockedEdgeIds, hazards = [], selectedId, onSelect }: { incidents: Incident[]; teams: Team[]; plan: RoutePlan | null; blockedEdgeIds: string[]; hazards?: Hazard[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapInstance | null>(null);
   const [error, setError] = useState(false);
@@ -19,7 +24,7 @@ export function OperationsMap({ incidents, teams, plan, selectedId, onSelect }: 
   useEffect(() => {
     if (!container.current) return;
     try {
-      const instance = new maplibregl.Map({ container: container.current, style: import.meta.env.VITE_MAP_STYLE_URL || fallbackStyle, center: [-121.889, 37.339], zoom: 13.1, attributionControl: { compact: true } });
+      const instance = new maplibregl.Map({ container: container.current, style: import.meta.env.VITE_MAP_STYLE_URL || fallbackStyle, center: [-89.955, 29.94], zoom: 12.4, attributionControl: { compact: true } });
       map.current = instance;
       instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       instance.on('error', () => setError(true));
@@ -84,11 +89,40 @@ export function OperationsMap({ incidents, teams, plan, selectedId, onSelect }: 
     return () => { instance.off('load', draw); };
   }, [plan]);
 
+  useEffect(() => {
+    if (!map.current) return;
+    const markers = hazards.map(hazard => {
+      const el = document.createElement('div');
+      el.className = `hazard-pin ${hazard.kind}`; el.textContent = hazardIcons[hazard.kind]; el.title = `${hazard.label} · ${hazard.at}`;
+      el.setAttribute('role', 'img'); el.setAttribute('aria-label', hazard.label);
+      return new maplibregl.Marker({ element: el }).setLngLat(hazard.coordinates).addTo(map.current!);
+    });
+    return () => markers.forEach(marker => marker.remove());
+  }, [hazards]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !isDemo) return;
+    function draw() {
+      if (!instance) return;
+      const data = closureFeatures(blockedEdgeIds);
+      const source = instance.getSource('closures') as maplibregl.GeoJSONSource | undefined;
+      if (source) source.setData(data);
+      else {
+        instance.addSource('closures', { type: 'geojson', data });
+        instance.addLayer({ id: 'closures', type: 'line', source: 'closures', paint: { 'line-color': '#ff5a5f', 'line-width': 4, 'line-dasharray': [1.5, 1.2], 'line-opacity': 0.9 } });
+      }
+    }
+    if (instance.isStyleLoaded()) draw();
+    instance.on('load', draw);
+    return () => { instance.off('load', draw); };
+  }, [blockedEdgeIds]);
+
   return <section className="map-panel" aria-label="Incident map">
     <div ref={container} className="map-canvas" />
-    <div className="map-heading"><span className="live-dot" /> {isDemo ? 'SAN JOSÉ' : 'RESPONSE AREA'} <span className="map-label">Operational area</span></div>
+    <div className="map-heading"><span className="live-dot" /> {isDemo ? 'ST. BERNARD PARISH, LA' : 'RESPONSE AREA'} <span className="map-label">Operational area</span></div>
     <div className="map-note">{incidents.length ? `${incidents.length} verified requests · ${isDemo ? 'Sample locations' : 'Confirmed addresses'}` : 'No verified reports yet. Review collected data to add map pins.'}<br />{plan?.routing ? <>Driving routes via Amazon Location · Road access points<br />Routing © <a href="https://www.here.com/legal/terms" target="_blank" rel="noreferrer">HERE</a> · Traffic not included</> : 'Generate road routes to display the driving paths.'}</div>
     {error && <div className="map-error" role="status">Map tiles unavailable. Requests remain accessible in the list.</div>}
-    <div className="map-legend"><span><i className="legend-dot critical" /> Critical</span><span><i className="legend-dot high" /> High</span><span><i className="legend-dot normal" /> Normal</span><span><i className="legend-dot team" /> Team</span></div>
+    <div className="map-legend"><span><i className="legend-dot critical" /> Critical</span><span><i className="legend-dot high" /> High</span><span><i className="legend-dot normal" /> Normal</span><span><i className="legend-dot team" /> Team</span>{isDemo && <span><i className="legend-line closed" /> Closed road</span>}</div>
   </section>;
 }

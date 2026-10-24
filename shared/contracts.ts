@@ -27,6 +27,24 @@ export interface Incident {
   followUps?: string[];
   categoryNeedsReview?: boolean;
   duplicateOf?: string[];
+  /** Where the report came from in the disaster scenario (simulated feed or AI call intake). */
+  channel?: ReportChannel;
+  /** Ordered call transcript for AI call-intake reports. */
+  transcript?: CallTurn[];
+  /** Facts extracted from a call, each traceable to a caller transcript turn. */
+  callFacts?: CallFact[];
+}
+export type ReportChannel = 'news' | '911' | 'police' | 'ai-call';
+export interface CallTurn { speaker: 'assistant' | 'caller'; text: string }
+export type CallFactField = 'location' | 'what_happened' | 'immediate_threats' | 'people_affected' | 'injuries' | 'access_obstacles' | 'other';
+export interface CallFact {
+  field: CallFactField;
+  value: string;
+  certainty: 'stated' | 'uncertain';
+  /** Index into the transcript of the caller turn the fact was taken from. */
+  turnIndex: number;
+  /** Verbatim excerpt of that caller turn supporting the fact. */
+  quote: string;
 }
 export interface Team {
   id: string;
@@ -110,3 +128,5 @@ export interface ReportExtraction {
 }
 export interface ExtractionResponse { extraction: ReportExtraction; ai: AiProvenance }
 export interface PlanResponse { plan: RoutePlan }
+export interface CallTurnResponse { reply: string; readyToFile: boolean; ai: AiProvenance }
+export interface CallReportResponse { extraction: ReportExtraction; facts: CallFact[]; unknowns: CallFactField[]; ai: AiProvenance }

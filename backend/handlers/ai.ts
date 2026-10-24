@@ -1,6 +1,7 @@
 import { InputError, object, text, validateBoard } from '../validation';
 import { RoadRoutingError } from '../services/roads';
 import { extractReport, reviewRoadPlan } from '../services/intelligence';
+import { buildCallReport, nextCallTurn, validateTranscript } from '../services/callIntake';
 export type Event = { body?: string; isBase64Encoded?: boolean; rawPath?: string; requestContext?: { http?: { method?: string }; authorizer?: { jwt?: { claims?: Record<string, string> } } } };
 export const reply = (statusCode: number, body: unknown) => ({ statusCode, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body) });
 export function parseBody(event: Event): Record<string, unknown> {
@@ -29,6 +30,8 @@ export async function handler(event: Event) {
     if (event.requestContext.http?.method !== 'POST') return reply(405, { error: 'Use POST.' });
     const body = parseBody(event);
     if (event.rawPath === '/ai/extract') return reply(200, await extractReport(text(body.report, 'report'), body.followUp === undefined ? undefined : text(body.followUp, 'follow-up', 4000)));
+    if (event.rawPath === '/ai/call-turn') return reply(200, await nextCallTurn(validateTranscript(body.transcript, true)));
+    if (event.rawPath === '/ai/call-report') return reply(200, await buildCallReport(validateTranscript(body.transcript, false)));
     if (event.rawPath === '/ai/plan') return reply(200, { plan: await reviewRoadPlan(validateBoard(body.board)) });
     return reply(404, { error: 'Unknown AI endpoint.' });
   } catch (error) { return failure(error); }

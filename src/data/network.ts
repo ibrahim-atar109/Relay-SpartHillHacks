@@ -1,14 +1,18 @@
-/** Fictional travel network over San José. Edges are schematic, not real roads. */
+/**
+ * Scenario network over St. Bernard Parish, Louisiana (Arabi · Chalmette · Meraux · Violet).
+ * Points are approximate staging/shelter points chosen for the Hurricane Katrina training scenario;
+ * facility names are illustrative, and edges are schematic connections, not surveyed roads.
+ */
 export const nodes: Record<string, { label: string; coordinates: [number, number] }> = {
-  nw: { label: 'North depot', coordinates: [-121.904, 37.352] },
-  n: { label: 'Northside shelter', coordinates: [-121.889, 37.352] },
-  ne: { label: 'Eastside library', coordinates: [-121.874, 37.352] },
-  w: { label: 'Westside senior housing', coordinates: [-121.904, 37.339] },
-  c: { label: 'Downtown community center', coordinates: [-121.889, 37.339] },
-  e: { label: 'East depot', coordinates: [-121.874, 37.339] },
-  sw: { label: 'South depot', coordinates: [-121.904, 37.326] },
-  s: { label: 'Southside clinic', coordinates: [-121.889, 37.326] },
-  se: { label: 'Riverside apartments', coordinates: [-121.874, 37.326] },
+  nw: { label: 'Arabi staging depot · Judge Perez Dr', coordinates: [-89.9965, 29.9583] },
+  n: { label: 'Chalmette · Paris Rd shelter point', coordinates: [-89.9585, 29.9515] },
+  ne: { label: 'Meraux · Mehle Ave shelter point', coordinates: [-89.9235, 29.9395] },
+  w: { label: 'Arabi · St. Claude Ave senior housing', coordinates: [-89.9985, 29.9518] },
+  c: { label: 'Chalmette · Parish Government Complex', coordinates: [-89.9632, 29.9427] },
+  e: { label: 'Meraux staging depot · Judge Perez Dr', coordinates: [-89.9282, 29.9325] },
+  sw: { label: 'Arabi riverfront depot · St. Bernard Hwy', coordinates: [-89.9905, 29.9452] },
+  s: { label: 'Chalmette riverfront clinic point · St. Bernard Hwy', coordinates: [-89.9545, 29.9362] },
+  se: { label: 'Violet · St. Bernard Hwy apartments', coordinates: [-89.8975, 29.8955] },
 };
 export const edges = [
   { id: 'nw-n', from: 'nw', to: 'n', minutes: 4 },
@@ -22,7 +26,7 @@ export const edges = [
   { id: 'n-c', from: 'n', to: 'c', minutes: 3 },
   { id: 'c-s', from: 'c', to: 's', minutes: 4 },
   { id: 'ne-e', from: 'ne', to: 'e', minutes: 4 },
-  { id: 'e-se', from: 'e', to: 'se', minutes: 6 },
+  { id: 'e-se', from: 'e', to: 'se', minutes: 9 },
 ];
 
 export function shortestPath(start: string, end: string, blocked: string[]) {

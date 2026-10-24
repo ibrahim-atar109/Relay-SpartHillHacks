@@ -5,6 +5,6 @@ import type * as GeoJSON from 'geojson';
 export function roadFeatures(plan: RoutePlan | null): GeoJSON.FeatureCollection<GeoJSON.MultiLineString> {
   return { type: 'FeatureCollection', features: plan?.routing?.provider === 'amazon-location' ? plan.routes.flatMap((route, index) => {
     const lines = route.roadLegs?.flatMap(leg => leg.lines).filter(line => line.length > 1) ?? [];
-    return lines.length ? [{ type: 'Feature' as const, properties: { color: ['#336e91', '#8d649b', '#bc8038'][index % 3] }, geometry: { type: 'MultiLineString' as const, coordinates: lines } }] : [];
+    return lines.length ? [{ type: 'Feature' as const, properties: { color: ['#4ea8de', '#b892ff', '#f4a259'][index % 3] }, geometry: { type: 'MultiLineString' as const, coordinates: lines } }] : [];
   }) : [] };
 }

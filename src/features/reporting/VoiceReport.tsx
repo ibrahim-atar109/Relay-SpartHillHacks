@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { opening, nextDispatcherTurn, type CallTurn } from './dispatcher';
-import { Mic, Square, X, Send } from 'lucide-react';
-import './voice.css';
+import { Mic, Square, X, Send, Bot, Volume2, VolumeX, RotateCw } from 'lucide-react';
+import type { CallReportResponse, CallTurn } from '../../../shared/contracts';
+import { aiConfigured, aiSignedIn, bedrock } from '../../services/ai';
 import { isDemo } from '../../services/api';
+
+type Turn = CallTurn & { audioUrl?: string };
+export type FinishedCall = { turns: CallTurn[]; report: CallReportResponse };
+const MAX_TURNS = 38;
+export const transcriptText = (turns: CallTurn[]) => turns.map(t => `${t.speaker === 'assistant' ? 'AI intake assistant (simulation)' : 'Caller'}: ${t.text}`).join('\n\n');
 
 type SpeechResult = { isFinal: boolean; 0: { transcript: string } };
 type Recognition = {
@@ -14,14 +19,28 @@ type Recognition = {
 };
 type SpeechWindow = Window & { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
 
-export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubmit: (transcript: string, audioUrl: string, recordings: { text: string; audioUrl: string }[]) => Promise<void> }) {
+/**
+ * Simulated 911 call with the configured Amazon Bedrock model. Every assistant line comes from the
+ * backend `/ai/call-turn` endpoint; there is no scripted fallback. If AI is unavailable the call cannot start.
+ */
+export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubmit: (transcript: string, audioUrl: string, recordings: { text: string; audioUrl: string }[], call: FinishedCall) => Promise<void> }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const recognition = useRef<Recognition | null>(null);
   const urls = useRef<string[]>([]);
   const finalText = useRef('');
-  const [turns, setTurns] = useState<CallTurn[]>([{ speaker: 'dispatcher', text: opening }]);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [thinking, setThinking] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [readAloud, setReadAloud] = useState(true);
+  const [readyToFile, setReadyToFile] = useState(false);
+  const [failedTurns, setFailedTurns] = useState<Turn[] | null>(null);
+  const readAloudRef = useRef(true);
+  const turnsRef = useRef<Turn[]>([]);
+  const greeted = useRef(false);
+  const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const aiReady = aiConfigured && aiSignedIn();
   const threadEnd = useRef<HTMLDivElement>(null);
   const transferred = useRef(false);
   const retainedUrls = useRef(new Set<string>());
@@ -41,6 +60,7 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
   useEffect(() => {
     mounted.current = true;
     if (dialog.current && !dialog.current.open) dialog.current.showModal();
+    if (aiConfigured && aiSignedIn() && !greeted.current) { greeted.current = true; void askAssistant([]); }
     return () => {
       mounted.current = false;
       clearTimeout(timeout.current);
@@ -58,6 +78,37 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
   }, [phase]);
 
   useEffect(() => { threadEnd.current?.scrollIntoView({ block: 'nearest' }); }, [turns]);
+  /** Read an assistant line aloud. The microphone stays off while speaking so playback is never transcribed. */
+  function speak(text: string) {
+    if (!canSpeak || !readAloudRef.current) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.onend = utterance.onerror = () => { if (mounted.current) setSpeaking(false); };
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  }
+  function stopSpeaking() { if (canSpeak) window.speechSynthesis.cancel(); setSpeaking(false); }
+  async function askAssistant(history: Turn[]) {
+    setThinking(true); setError(''); setFailedTurns(null);
+    try {
+      const result = await bedrock.callTurn(history.map(({ speaker, text }) => ({ speaker, text })));
+      if (!mounted.current) return;
+      setConversation([...history, { speaker: 'assistant', text: result.reply }]);
+      setReadyToFile(result.readyToFile);
+      speak(result.reply);
+    } catch (err) {
+      if (!mounted.current) return;
+      setConversation(history); setFailedTurns(history);
+      setError(err instanceof Error ? `The AI assistant did not respond: ${err.message}` : 'The AI assistant did not respond.');
+    } finally { if (mounted.current) setThinking(false); }
+  }
+  function setConversation(next: Turn[]) { turnsRef.current = next; setTurns(next); }
+  function addCallerTurn(turn: Turn) {
+    const next = [...turnsRef.current, turn];
+    setConversation(next);
+    void askAssistant(next);
+  }
   function finishAudio() {
     if (recorder.current?.state === 'recording') recorder.current.stop();
     stream.current?.getTracks().forEach(track => track.stop());
@@ -72,8 +123,8 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
   async function start() {
     if (!Speech) return;
     setError(''); setPhase('starting'); setTranscript(''); setInterim(''); setSeconds(0);
-    window.speechSynthesis?.cancel();
-    finalText.current = ''; 
+    stopSpeaking();
+    finalText.current = '';
     try {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!mounted.current) { media.getTracks().forEach(track => track.stop()); return; }
@@ -89,8 +140,7 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
         const audioUrl = blob.size ? URL.createObjectURL(blob) : undefined;
         if (audioUrl) urls.current.push(audioUrl);
         if (finalText.current.trim()) {
-          const reply: CallTurn = { speaker: 'caller', text: finalText.current.trim(), audioUrl };
-          setTurns(previous => { const next = [...previous, reply]; return [...next, { speaker: 'dispatcher', text: nextDispatcherTurn(next, isDemo ? 'San José' : null) }]; });
+          addCallerTurn({ speaker: 'caller', text: finalText.current.trim(), audioUrl });
         }
         setInterim(''); setPhase('ready');
       };
@@ -131,32 +181,46 @@ export function VoiceReport({ onClose, onSubmit }: { onClose: () => void; onSubm
   const active = phase === 'starting' || phase === 'recording' || phase === 'stopping';
   const recordings = turns.filter(turn => turn.speaker === 'caller' && turn.audioUrl).map(turn => ({ text: turn.text, audioUrl: turn.audioUrl! }));
   const callerTurns = turns.filter(turn => turn.speaker === 'caller');
+  const atLimit = turns.length >= MAX_TURNS;
+  const replyLocked = !aiReady || thinking || speaking || saving || atLimit || !turns.length;
+  async function finish() {
+    setSaving(true); setError(''); stopSpeaking();
+    try {
+      const plain = turns.map(({ speaker, text }) => ({ speaker, text }));
+      const report = await bedrock.callReport(plain);
+      retainedUrls.current = new Set(recordings.map(r => r.audioUrl));
+      transferred.current = true;
+      await onSubmit(transcriptText(plain), recordings[0]?.audioUrl ?? '', recordings, { turns: plain, report });
+    } catch (err) { transferred.current = false; setError(err instanceof Error ? `Report not filed: ${err.message}` : 'Could not file the report.'); setSaving(false); }
+  }
   return <dialog ref={dialog} className="voice-dialog call-dialog" aria-labelledby="voice-title" onCancel={event => { event.preventDefault(); if (!saving) onClose(); }}>
-    <div className="voice-header"><div><div className="eyebrow">TRAINING LINE · RULES-BASED DISPATCHER</div><h2 id="voice-title">Simulated 911 call</h2></div><button className="voice-close" aria-label="Close voice report" disabled={saving} onClick={onClose}><X size={20} /></button></div>
-    <p className="voice-intro">{isDemo ? 'San José training exercise.' : 'Training exercise.'} Speak or type naturally; the simulated dispatcher asks follow-up questions.</p>
-    <div className="call-thread" aria-label="Call conversation">{turns.map((turn,index) => <article key={index} className={`call-turn ${turn.speaker}`}><span>{turn.speaker === 'dispatcher' ? 'Dispatcher · simulated' : 'You · voice transcript'}</span><p>{turn.text}</p>{turn.audioUrl && <audio controls src={turn.audioUrl} aria-label={`Your reply ${Math.ceil(index / 2)}`} />}</article>)}<div ref={threadEnd} /></div>
-    <details className="call-guide"><summary>Need help getting started?</summary><p>Describe a fictional location, what happened, who needs help, and what you can see. For example: “I’m at the downtown community center. Six people need water and the street is flooded.” You do not have to follow a script.</p></details>
-    <p className="voice-privacy">Training only. No emergency service is contacted. Dispatcher prompts are rules-based. Speech recognition may use your browser’s online service. Audio stays in this tab and clears on reset/reload. {isDemo ? 'After submission, you can analyze the transcript with Bedrock.' : 'Submitting sends the transcript to Bedrock and saves it to the shared AWS workspace. Audio is not uploaded. Use fictional personal details.'} Each spoken reply is limited to two minutes.</p>
-    {!supported && <p className="voice-support-note">Voice transcription is unavailable here. Type your replies below, or use a supported browser such as Chrome on HTTPS.</p>}
-    <div className="voice-controls"><button className={`button ${phase === 'recording' ? 'recording-button' : 'primary'}`} disabled={!supported || phase === 'starting' || phase === 'stopping' || saving} onClick={phase === 'recording' ? stop : () => void start()}>{phase === 'recording' ? <Square size={16} /> : <Mic size={17} />}{phase === 'recording' ? 'Send spoken reply' : phase === 'starting' ? 'Requesting microphone…' : phase === 'stopping' ? 'Transcribing…' : 'Speak your reply'}</button><span role="status">{phase === 'recording' ? `Recording · ${seconds}s` : 'Your microphone is off'}</span><button className="button secondary" disabled={active || saving || !window.speechSynthesis} onClick={() => { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(turns[turns.length-1].text)); }}>Read prompt aloud</button></div>
+    <div className="voice-header"><div><div className="eyebrow">TRAINING SIMULATION · AI CALL INTAKE</div><h2 id="voice-title">Simulated 911 call</h2></div><button className="voice-close" aria-label="Close call" disabled={saving} onClick={onClose}><X size={20} /></button></div>
+    <p className="ai-disclosure"><Bot size={16} /><span>You are speaking with an <strong>AI assistant powered by Amazon Bedrock</strong> in a training simulation. No emergency service is contacted and no one is dispatched.</span></p>
+    {!aiConfigured && <p className="voice-error" role="alert">AI call intake is not connected. Set VITE_AI_API_URL, VITE_AWS_REGION and VITE_COGNITO_CLIENT_ID and deploy the backend to use this feature.</p>}
+    {aiConfigured && !aiSignedIn() && <p className="voice-error" role="alert">Sign in under “New report” to start an AI call. The call cannot run without the Bedrock backend.</p>}
+    <div className="call-thread" aria-label="Call conversation" aria-live="polite">{turns.map((turn, index) => <article key={index} className={`call-turn ${turn.speaker}`}><span>{turn.speaker === 'assistant' ? 'AI assistant · Bedrock' : turn.audioUrl ? 'Caller · voice transcript' : 'Caller · typed'}</span><p>{turn.text}</p>{turn.audioUrl && <audio controls src={turn.audioUrl} aria-label={`Caller reply ${index}`} />}</article>)}
+      {thinking && <article className="call-turn assistant pending"><span>AI assistant · Bedrock</span><p className="typing" aria-label="Assistant is responding"><i /><i /><i /></p></article>}
+      <div ref={threadEnd} /></div>
+    {failedTurns && <button className="button secondary" onClick={() => void askAssistant(failedTurns)}><RotateCw size={15} />Retry AI reply</button>}
+    {readyToFile && !saving && <p className="ready-hint">The assistant has the key details. Finish the call to file the report, or keep talking to add more.</p>}
+    {atLimit && <p className="voice-error">This call reached its length limit. Finish the call to file the report.</p>}
+    {!supported && aiReady && <p className="voice-support-note">Voice transcription is unavailable in this browser. Type your replies, or use Chrome on HTTPS.</p>}
+    <div className="voice-controls">
+      <button className={`button ${phase === 'recording' ? 'recording-button' : 'primary'}`} disabled={!supported || replyLocked || phase === 'starting' || phase === 'stopping'} onClick={phase === 'recording' ? stop : () => void start()}>{phase === 'recording' ? <Square size={16} /> : <Mic size={17} />}{phase === 'recording' ? 'Send spoken reply' : phase === 'starting' ? 'Requesting microphone…' : phase === 'stopping' ? 'Transcribing…' : 'Speak'}</button>
+      <span role="status">{phase === 'recording' ? `Listening · ${seconds}s` : speaking ? 'Assistant speaking — mic paused' : thinking ? 'Assistant is thinking…' : 'Microphone off'}</span>
+      {canSpeak && <button className="button ghost" aria-pressed={readAloud} onClick={() => { const next = !readAloud; readAloudRef.current = next; setReadAloud(next); if (!next) stopSpeaking(); }}>{readAloud ? <Volume2 size={15} /> : <VolumeX size={15} />}{readAloud ? 'Voice on' : 'Voice off'}</button>}
+      {speaking && <button className="button ghost" onClick={stopSpeaking}>Skip</button>}
+    </div>
     {active && <div className="voice-transcript" aria-live="polite"><p>{transcript || 'Listening…'} <em>{interim}</em></p></div>}
     {error && <p className="voice-error" role="alert">{error}</p>}
-    {phase === 'ready' && !transcript && <p className="voice-error">No final transcript was captured. Please speak your reply again.</p>}
+    {phase === 'ready' && !transcript && <p className="voice-error">No speech was captured. Please speak again.</p>}
     <form className="typed-reply" onSubmit={event => {
       event.preventDefault();
-      if (active || saving || !typedReply.trim()) return;
-      const reply: CallTurn = { speaker: 'caller', text: typedReply.trim() };
-      setTurns(previous => { const next = [...previous, reply]; return [...next, { speaker: 'dispatcher', text: nextDispatcherTurn(next, isDemo ? 'San José' : null) }]; });
+      if (active || replyLocked || !typedReply.trim()) return;
+      addCallerTurn({ speaker: 'caller', text: typedReply.trim().slice(0, 2000) });
       setTypedReply(''); setError(''); setPhase('idle');
-    }}><label className="field">Or type your reply<textarea rows={2} maxLength={2000} value={typedReply} onChange={e => setTypedReply(e.target.value)} disabled={active || saving} placeholder="Tell the dispatcher what you can see…" /></label><button type="submit" className="button secondary" disabled={active || saving || !typedReply.trim()}><Send size={15} />Send reply</button></form>
-    <div className="voice-footer"><p>{callerTurns.length} {callerTurns.length === 1 ? 'reply' : 'replies'} captured · {recordings.length} recorded.<br />Finish at any time; missing details stay unverified.</p><button type="button" className="button primary" disabled={active || saving || !callerTurns.length || !!typedReply.trim()} onClick={async () => {
-      setSaving(true); setError('');
-      try {
-        retainedUrls.current = new Set(recordings.map(r => r.audioUrl));
-        transferred.current = true;
-        await onSubmit(turns.map(turn => `${turn.speaker === 'dispatcher' ? 'Dispatcher (simulation)' : 'Caller'}: ${turn.text}`).join('\n\n'), recordings[0]?.audioUrl ?? '', recordings);
-      }
-      catch (err) { transferred.current = false; setError(err instanceof Error ? err.message : 'Could not submit report.'); setSaving(false); }
-    }}><Send size={16} />{saving ? 'Adding call…' : 'Finish call & submit'}</button></div>
+    }}><label className="field">Or type a reply<textarea rows={2} maxLength={2000} value={typedReply} onChange={e => setTypedReply(e.target.value)} disabled={active || !aiReady || saving} placeholder="Describe where you are and what is happening…" /></label><button type="submit" className="button secondary" disabled={active || replyLocked || !typedReply.trim()}><Send size={15} />Send</button></form>
+    <p className="voice-privacy">Use fictional details. Speech recognition may use your browser’s online service; audio stays in this tab. {isDemo ? 'The finished report joins the review queue in this tab.' : 'The transcript is saved to the shared workspace; audio is not uploaded.'}</p>
+    <div className="voice-footer"><p>{callerTurns.length} caller {callerTurns.length === 1 ? 'reply' : 'replies'}. Missing details are marked unknown for human review.</p><button type="button" className="button primary" disabled={active || saving || thinking || !callerTurns.length || !!typedReply.trim() || !aiReady} onClick={() => void finish()}><Send size={16} />{saving ? 'Filing report with Bedrock…' : 'End call & file report'}</button></div>
   </dialog>;
 }

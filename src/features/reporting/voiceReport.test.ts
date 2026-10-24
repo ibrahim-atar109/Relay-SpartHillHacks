@@ -60,3 +60,41 @@ describe('911 simulation integrated from andrew01', () => {
     expect(revoke.mock.calls.filter(([url]) => url === 'blob:second')).toHaveLength(1);
   });
 });
+
+// MOCKED: the Bedrock call report below is a hand-written fixture, not model output.
+describe('AI call intake report filing (mocked Bedrock response)', () => {
+  it('files a structured report with transcript and traceable facts, off the map until verified', async () => {
+    const turns = [{ speaker: 'assistant' as const, text: 'AI assistant here. Where are you?' }, { speaker: 'caller' as const, text: 'Arabi senior housing, four of us.' }];
+    const report = {
+      extraction: { title: 'Arabi senior housing', summary: 'Four people.', category: null, priority: null, locationLabel: 'Arabi senior housing', nodeId: 'w', people: 4, quantity: null, missingInfo: ['Confirm urgency.'], clarificationQuestions: [] },
+      facts: [{ field: 'location' as const, value: 'Arabi senior housing', certainty: 'stated' as const, turnIndex: 1, quote: 'Arabi senior housing' }],
+      unknowns: [], ai: { provider: 'bedrock' as const, modelId: 'mock', requestId: 'r', at: new Date().toISOString() },
+    };
+    const board = await api.submitVoiceReport('Caller: Arabi senior housing, four of us.', '', [], { turns, report });
+    const incident = board.incidents[0];
+    expect(incident.channel).toBe('ai-call');
+    expect(incident.transcript).toEqual(turns);
+    expect(incident.callFacts).toEqual(report.facts);
+    expect(incident.people).toBe(4);
+    expect(incident.quantity).toBe(0);
+    expect(incident.categoryNeedsReview).toBe(true);
+    expect(incident.location.coordinates).toBeNull();
+    expect(incident.status).toBe('needs_review');
+  });
+});
+
+describe('simulated Katrina scenario feed', () => {
+  it('adds reports for review, closes roads and invalidates undispatched plans', async () => {
+    const { feedEvents } = await import('../../data/katrinaFeed');
+    let board = await api.getBoard();
+    const closure = feedEvents.find(e => e.blocksEdgeId)!;
+    const reportEvent = feedEvents.find(e => e.report)!;
+    board = await api.applyFeedEvent(reportEvent);
+    expect(board.incidents.at(-1)).toMatchObject({ status: 'needs_review', channel: reportEvent.channel, origin: 'synthetic' });
+    const count = board.incidents.length;
+    expect((await api.applyFeedEvent(reportEvent)).incidents).toHaveLength(count);
+    board = await api.applyFeedEvent(closure);
+    expect(board.blockedEdgeIds).toContain(closure.blocksEdgeId);
+    expect(board.plan).toBeNull();
+  });
+});

@@ -1,4 +1,4 @@
-import type { Board, ExtractionResponse, PlanResponse } from '../../shared/contracts';
+import type { Board, CallReportResponse, CallTurn, CallTurnResponse, ExtractionResponse, PlanResponse } from '../../shared/contracts';
 
 const base = (import.meta.env.VITE_AI_API_URL || '').replace(/\/$/, '');
 const region = import.meta.env.VITE_AWS_REGION || '';
@@ -64,10 +64,12 @@ async function request<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 export const bedrock = {
+  callTurn: (transcript: CallTurn[]) => request<CallTurnResponse>('/ai/call-turn', { transcript }),
+  callReport: (transcript: CallTurn[]) => request<CallReportResponse>('/ai/call-report', { transcript }),
   extract: (report: string, followUp?: string) => request<ExtractionResponse>('/ai/extract', { report, followUp }),
   plan: (board: Board) => request<PlanResponse>('/ai/plan', { board: {
     ...board,
     // Browser blob references are useful only in this tab and must not go to AWS.
-    incidents: board.incidents.map(({ audioUrl: _audio, recordings: _recordings, ...incident }) => incident),
+    incidents: board.incidents.map(({ audioUrl: _audio, recordings: _recordings, transcript: _transcript, callFacts: _facts, ...incident }) => incident),
   } }),
 };
