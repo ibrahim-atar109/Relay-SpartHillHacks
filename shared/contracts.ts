@@ -36,6 +36,13 @@ export interface Team {
 }
 export interface Activity { id: string; message: string; at: string }
 export interface RouteStop { incidentId: string; arrivalMinutes: number }
+export interface RoadLeg {
+  incidentId: string;
+  lines: [number, number][][];
+  distanceMeters: number;
+  durationMinutes: number;
+  directions: { instruction: string; distanceMeters: number }[];
+}
 export interface TeamRoute {
   teamId: string;
   stops: RouteStop[];
@@ -43,6 +50,8 @@ export interface TeamRoute {
   edgeIds: string[];
   travelMinutes: number;
   load: number;
+  roadLegs?: RoadLeg[];
+  distanceMeters?: number;
 }
 export interface RoutePlan {
   id: string;
@@ -56,6 +65,7 @@ export interface RoutePlan {
   ai?: AiProvenance;
   aiExplanation?: string;
   reviewNotes?: string[];
+  routing?: { provider: 'amazon-location'; travelMode: 'Car'; calculatedAt: string; traffic: 'disabled'; notices: string[] };
 }
 export interface RescuerAlert {
   id: string;

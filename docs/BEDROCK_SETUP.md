@@ -5,12 +5,12 @@
 - Text messages, pasted voice transcripts, and form text are submitted to Bedrock for extraction. It returns a summary, supply category, urgency, people/tote counts, missing information and clarification questions.
 - Every extracted report starts in `needs_review`, off the map. Unknown values stay unknown until the coordinator confirms them. Supply totes are not inferred from people, bottles or medical doses.
 - The report detail panel can reanalyze seeded reports or new reports with additional answers from the reporter. Original text and follow-up evidence stay available for review.
-- Route generation calls the Lambda backend. The existing exact optimizer computes feasible assignments, stop order and travel times; Bedrock adds a separate explanation and review checklist. AI cannot overwrite computed routes. Review, approval and simulated alerts remain explicit steps.
+- Route generation calls the Lambda backend. Amazon Location Routes V2 supplies a directed driving-time matrix for optimization, then road geometry and driving instructions for each chosen leg. The exact optimizer computes feasible assignments and stop order; Bedrock adds a separate explanation and review checklist. AI cannot overwrite computed routes. Review, approval and simulated alerts remain explicit steps. Road routing requires `geo-routes:CalculateRouteMatrix` and `geo-routes:CalculateRoutes` on the Region's `provider/default` ARN, included in the SAM template.
 - Responses record the Bedrock model ID, AWS request ID and time. Invalid model output or failed inference produces a visible error; there is no silent mock AI response.
 
 Architecture: Amplify React frontend → API Gateway with Cognito JWT authentication → Lambda → Bedrock Converse. Backend SDK credentials come from the Lambda execution role. No Bedrock API key or AWS secret is required in the frontend.
 
-This is a hackathon scenario workspace: board state is in browser memory and resets on reload. Route calculations use the existing fictional San José network, up to eight verified requests, six teams, standardized supply totes, preloaded supplies, two-minute stops and no return journey. It does not geocode arbitrary places or calculate real-road directions. Voice means pasted transcript; recording/transcription, external data feeds, persistent shared storage and actual notifications require separate integrations. Do not set `VITE_DATA_MODE=live`: that mode expects a separate full board API that this AI backend does not implement.
+This is a hackathon scenario workspace: board state is in browser memory and resets on reload. AWS route calculations use real driving roads between the sample San José coordinates, up to eight verified requests, six teams, standardized supply totes, preloaded supplies, two-minute stops and no return journey. The sample facility names are fictional. The provider snaps each endpoint to its road access point; no connectors are drawn from those road points through buildings to the sample pins. Traffic data is disabled for a consistent optimization snapshot. The fictional `c-e` closure is not applied to road routing. The offline optimizer still uses the fictional network, but the map never renders its straight-line geometry. Arbitrary-place geocoding, recording/transcription, external data feeds, persistent shared storage and actual notifications require separate integrations. Do not set `VITE_DATA_MODE=live`: that mode expects a separate full board API that this AI backend does not implement.
 
 ## 1. Choose a Region and confirm a model works
 
@@ -96,7 +96,7 @@ For local development, copy `.env.example` to `.env.local`, set the same values 
 4. Submit an ambiguous report such as `We are at the library and need water.` Confirm unknown counts/location produce missing information and questions.
 5. In the report detail, add `Eastside library. 12 people need 3 standardized supply totes of water.` and click **Analyze with Bedrock**. Review the original and follow-up evidence before confirming fields.
 6. Verify one or more reports, then click **Optimize routes & review with Bedrock**. The plan should show exact solver assumptions and a separate **Bedrock plan review** section.
-7. Confirm routes avoid closed edge `c-e`, respect capacity/capability, and exclude unverified reports. Approve the plan to enable simulated alerts. No external messages are sent.
+7. Confirm the road polylines follow streets, expand the driving directions for each stop, and check capacity/capability and exclusion of unverified reports. The synthetic `c-e` closure is not a real road closure and does not apply to this road plan. Approve the plan to enable simulated alerts. No external messages are sent.
 8. Sign out and confirm AI actions require sign-in.
 
 ## Troubleshooting
@@ -107,7 +107,8 @@ For local development, copy `.env.example` to `.env.local`, set the same values 
 - Browser CORS error: `FrontendOrigin` must exactly match the browser origin, with no path or trailing slash. Changing branches changes the origin.
 - HTTP 502: inspect Lambda → Monitor → CloudWatch logs. Check `BEDROCK_MODEL_ID`, Region, account access and the Lambda execution role's model/profile resource ARNs. The logs exclude report text/model output. AWS metadata can be used to correlate model failures.
 - HTTP 429: model quota or API throttling; wait briefly and retry. A failed AI request does not silently enable a local plan.
-- Real place cannot be mapped: this prototype requires the coordinator to select a fictional network location. A real-road deployment needs geocoding, confirmed coordinates and a trusted travel-time matrix/routing service before making operational routing claims.
+- Road routing permission error: redeploy the updated SAM template, which grants `geo-routes:CalculateRouteMatrix` and `geo-routes:CalculateRoutes` on `arn:aws:geo-routes:REGION::provider/default`. Uploading Lambda code alone cannot add these permissions. Both APIs incur normal Amazon Location usage charges.
+- Real place cannot be mapped: this prototype requires the coordinator to select a sample location. Arbitrary addresses require geocoding and confirmed access coordinates. Amazon Location road geometry does not verify that a sample point is an actual shelter or clinic.
 
 ## Validation performed in the repository
 

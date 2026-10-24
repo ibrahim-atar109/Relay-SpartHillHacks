@@ -91,4 +91,13 @@ describe('verified data → routes → route approval → rescuer alerts', () =>
     board.incidents[0].quantity = 100;
     expect(generatePlan(board).unservedIds).toContain('REQ-1042');
   });
+  it('respects directed road travel times when choosing the stop order', () => {
+    const b = verifiedBoard();
+    b.teams = [{ ...b.teams[0], capacity: 100 }];
+    b.incidents = [{ ...b.incidents[0], nodeId: 'c', priority: 'critical' }, { ...b.incidents[1], nodeId: 'n', priority: 'normal' }];
+    const costs: Record<string, number> = { 'nw/c': 20, 'nw/n': 1, 'n/c': 1, 'c/n': 100 };
+    const plan = generatePlan(b, (from, to) => ({ minutes: costs[`${from}/${to}`], coordinates: [], edgeIds: [] }));
+    expect(plan.routes[0].stops.map(s => s.incidentId)).toEqual([b.incidents[1].id, b.incidents[0].id]);
+    expect(plan.weightedArrivalMinutes).toBe(33);
+  });
 });

@@ -24,6 +24,9 @@ importers:
       '@aws-sdk/client-bedrock-runtime':
         specifier: ^3.1156.0
         version: 3.1156.0
+      '@aws-sdk/client-geo-routes':
+        specifier: ^3.1156.0
+        version: 3.1156.0
       '@types/geojson':
         specifier: ^7946.0.16
         version: 7946.0.16
@@ -56,6 +59,10 @@ packages:
 
   '@aws-sdk/client-bedrock-runtime@3.1156.0':
     resolution: {integrity: sha512-YtYsel8aoGP0K//ZO4qqgab6W/wYKHL+8MiWE4Z2SKKWz7MbVWMfUKKySdAle5RcE1yTviRF2RMlXE5MVPW/mA==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-geo-routes@3.1156.0':
+    resolution: {integrity: sha512-s8+I62uiBFwECokb3mMsQCJHHroJAd/M7vOtKDJmwKs/NBwls6H9YqP4NGBFQNSRMYzGL6e2EBFEy9v4uJgY4Q==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.978.5':
@@ -1195,6 +1202,17 @@ snapshots:
       '@aws-sdk/middleware-eventstream': 3.972.33
       '@aws-sdk/middleware-websocket': 3.972.58
       '@aws-sdk/token-providers': 3.1156.0
+      '@aws-sdk/types': 3.975.0
+      '@smithy/core': 3.36.2
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.12.1
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/client-geo-routes@3.1156.0':
+    dependencies:
+      '@aws-sdk/core': 3.978.5
+      '@aws-sdk/credential-provider-node': 3.972.88
       '@aws-sdk/types': 3.975.0
       '@smithy/core': 3.36.2
       '@smithy/fetch-http-handler': 5.8.0

@@ -79,6 +79,11 @@ Resources:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: !Ref BedrockResourceArns
+            - Effect: Allow
+              Action:
+                - geo-routes:CalculateRouteMatrix
+                - geo-routes:CalculateRoutes
+              Resource: !Sub 'arn:${AWS::Partition}:geo-routes:${AWS::Region}::provider/default'
       Events:
         Extract:
           Type: HttpApi

@@ -3,10 +3,16 @@ import { createDemoBoard } from '../../src/data/fixtures';
 import { applyAction } from '../../src/features/operations/rules';
 import { generatePlan } from '../../src/features/operations/planner';
 import { handler } from './ai';
-import { validateBoard } from '../validation';
+import { InputError, validateBoard } from '../validation';
 
 const { ask } = vi.hoisted(() => ({ ask: vi.fn() }));
 vi.mock('../services/bedrock', () => ({ askBedrock: ask }));
+vi.mock('../services/roads', async () => {
+  const actual = await vi.importActual<typeof import('../services/roads')>('../services/roads');
+  return { ...actual, prepareRoadPlan: vi.fn(async (board: Parameters<typeof generatePlan>[0]) => {
+    try { return generatePlan(board); } catch (error) { throw new InputError((error as Error).message); }
+  }), attachRoadGeometry: vi.fn(async (_board, plan) => plan) };
+});
 const ai = { provider: 'bedrock', modelId: 'test-model', requestId: 'test-request', at: '2026-10-24T00:00:00Z' };
 const extraction = {
   title: 'Water needed', summary: 'A caller requests water.', category: 'water', priority: null,
@@ -78,5 +84,20 @@ describe('authenticated Bedrock handlers', () => {
     expect((await handler(event('/ai/plan', { board: board() }))).statusCode).toBe(429);
     ask.mockResolvedValue({ value: { explanation: 'partial' }, ai });
     expect((await handler(event('/ai/plan', { board: board() }))).statusCode).toBe(502);
+  });
+  it('logs AWS denial details privately without exposing them to the browser', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      ask.mockRejectedValue(Object.assign(new Error('Denied by account policy for model ARN'), {
+        name: 'AccessDeniedException', $metadata: { requestId: 'denial-request' },
+      }));
+      const result = await handler(event('/ai/extract', { report: 'Private original report' }));
+      expect(result.statusCode).toBe(502);
+      expect(log).toHaveBeenCalledWith('AI request failed', expect.objectContaining({
+        message: 'Denied by account policy for model ARN', requestId: 'denial-request',
+      }));
+      expect(result.body).not.toContain('Denied by account policy');
+      expect(JSON.stringify(log.mock.calls)).not.toContain('Private original report');
+    } finally { log.mockRestore(); }
   });
 });

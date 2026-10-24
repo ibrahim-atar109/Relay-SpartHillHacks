@@ -12,6 +12,10 @@
 .ai-plan-review { padding: 16px; margin: 16px 0; background: #f4f7ed; border-radius: 6px; }
 .ai-plan-review p { margin: 8px 0; }
 .ai-plan-review ul { padding-left: 20px; }
+.road-notices { margin: 12px 0; padding: 12px; background: #f4f7ed; color: #607053; font-size: 11px; line-height: 1.7; border-radius: 6px; }
+.road-directions { margin-top: 10px; color: #506546; font-size: 11px; }
+.road-directions summary { cursor: pointer; font-weight: 600; }
+.road-directions ol { max-height: 250px; overflow-y: auto; padding-right: 6px; }
 .pipeline-steps > div { display: grid; grid-template-columns: 28px 1fr; column-gap: 9px; row-gap: 4px; border: 1px solid #dfe4d8; padding: 14px; border-radius: 8px; color: #7e8973; }
 .pipeline-steps span { grid-row: span 2; border-radius: 50%; background: #e5e9de; height: 26px; display: grid; place-items: center; font-size: 11px; }
 .pipeline-steps strong { font-size: 11px; }

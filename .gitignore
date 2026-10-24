@@ -9,3 +9,5 @@ dist/
 .aws-sam/
 coverage/
 backend/dist/
+/relay-lambda-diagnostic.zip
+/relay-road-backend.zip

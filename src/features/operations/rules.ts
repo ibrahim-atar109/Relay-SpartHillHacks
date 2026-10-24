@@ -69,7 +69,7 @@ export function alertRescuers(board: Board, planId: string): Board {
       message: `Approved plan: ${route.stops.map((stop, i) => {
         const request = board.incidents.find(item => item.id === stop.incidentId)!;
         return `${i + 1}. ${request.location.label}: ${request.quantity} totes of ${request.category}; arrival +${stop.arrivalMinutes} min`;
-      }).join(' → ')}. Avoid blocked network link c-e. Acknowledge with the coordinator. DEMO ONLY — no external message sent.`,
+      }).join(' → ')}. ${plan.routing ? 'Follow the road directions in the route plan; confirm each stop’s access point.' : 'Avoid blocked network link c-e.'} Acknowledge with the coordinator. DEMO ONLY — no external message sent.`,
     })), ...board.alerts],
   }, `Simulated alerts created for ${plan.routes.length} rescuer teams`);
 }

@@ -1,7 +1,7 @@
 import { askBedrock } from '../services/bedrock';
 import { InputError, object, text, validateBoard, validateExtraction } from '../validation';
 import { nodes } from '../../src/data/network';
-import { generatePlan } from '../../src/features/operations/planner';
+import { attachRoadGeometry, prepareRoadPlan, RoadRoutingError } from '../services/roads';
 
 type Event = { body?: string; isBase64Encoded?: boolean; rawPath?: string; requestContext?: { http?: { method?: string }; authorizer?: { jwt?: { claims?: Record<string, string> } } } };
 const reply = (statusCode: number, body: unknown) => ({ statusCode, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(body) });
@@ -39,13 +39,12 @@ Preserve ambiguity and conflicts, especially conflicting follow-up statements. A
     }
     if (event.rawPath === '/ai/plan') {
       const board = validateBoard(body.board);
-      let plan;
-      try { plan = generatePlan(board); }
-      catch (error) { throw new InputError(error instanceof Error ? error.message : 'Cannot generate routes.'); }
-      const result = await askBedrock(`Explain the computed relief plan for its coordinator. Output {"explanation":"brief explanation","reviewNotes":["review item"]}.
-The solver first maximizes served urgency weight, then minimizes weighted arrival time (critical 8, high 3, normal 1). It checks capacity, capability and closures.
+      const signal = AbortSignal.timeout(25000);
+      const proposed = await prepareRoadPlan(board, signal);
+      const [plan, result] = await Promise.all([attachRoadGeometry(board, proposed, signal), askBedrock(`Explain the computed relief plan for its coordinator. Output {"explanation":"brief explanation","reviewNotes":["review item"]}.
+The solver first maximizes served urgency weight, then minimizes weighted arrival time (critical 8, high 3, normal 1). It checks capacity, capability and road reachability.
 Use only the supplied computed plan and inputs. Never invent routes, travel times, causes of non-service, weather, road conditions, or deliveries. Do not change assignments.
-Identify unserved IDs, tradeoffs, and matters needing human review. State that the network is fictional, supplies are assumed preloaded, stops take 2 minutes and return trips are excluded.`, { plan, incidents: board.incidents.filter(i => i.status === 'verified'), teams: board.teams, blockedEdgeIds: board.blockedEdgeIds });
+Identify unserved IDs, tradeoffs, and matters needing human review. Travel times come from Amazon Location's driving matrix with traffic disabled; road geometry is loaded separately. The facility names are fictional sample locations. The fictional c-e closure is NOT a real road closure and is not applied. Supplies are assumed preloaded, stops take 2 minutes and return trips are excluded.`, { plan: proposed, incidents: board.incidents.filter(i => i.status === 'verified'), teams: board.teams }, signal)]);
       let explanation: string; let reviewNotes: string[];
       try {
         const v = object(result.value);
@@ -58,10 +57,24 @@ Identify unserved IDs, tradeoffs, and matters needing human review. State that t
     return reply(404, { error: 'Unknown AI endpoint.' });
   } catch (error) {
     if (error instanceof InputError) return reply(400, { error: error.message });
+    if (error instanceof RoadRoutingError) {
+      const cause = error.cause instanceof Error ? error.cause : undefined;
+      console.error('Road routing failed', { name: cause?.name ?? error.name, message: cause?.message.slice(0, 4000) ?? error.message });
+      return reply(502, { error: error.message });
+    }
     const name = error instanceof Error ? error.name : 'UnknownError';
     // Do not log report bodies or model output.
     const metadata = error && typeof error === 'object' && '$metadata' in error ? error.$metadata as { requestId?: string } : undefined;
-    console.error('AI request failed', { name, requestId: metadata?.requestId });
+    console.error('AI request failed', {
+      name, requestId: metadata?.requestId,
+      // Access-denied messages identify the blocked principal, action/resource or
+      // account/model access requirement. Keep this diagnostic in backend logs only.
+      ...(name === 'AccessDeniedException' && error instanceof Error ? {
+        message: error.message.slice(0, 4000),
+        modelId: process.env.BEDROCK_MODEL_ID,
+        region: process.env.AWS_REGION,
+      } : {}),
+    });
     if (name === 'ThrottlingException') return reply(429, { error: 'Bedrock is busy. Wait a moment and try again.' });
     return reply(502, { error: 'Bedrock request failed. Check the backend model, Region, permissions and CloudWatch logs.' });
   }

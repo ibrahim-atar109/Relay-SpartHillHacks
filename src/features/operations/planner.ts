@@ -3,16 +3,17 @@ import { shortestPath } from '../../data/network';
 
 const weights = { critical: 8, high: 3, normal: 1 };
 interface Option { mask: number; cost: number; route: TeamRoute }
+export type PathFinder = (start: string, end: string, blocked: string[]) => { minutes: number; coordinates: [number, number][]; edgeIds: string[] } | null;
 
 /** Enumerate every feasible stop order. Small demo limit keeps exact search bounded. */
-function optionsFor(team: Team, requests: Incident[], blocked: string[]): Option[] {
+function optionsFor(team: Team, requests: Incident[], blocked: string[], findPath: PathFinder): Option[] {
   const best = new Map<number, Option>();
   function visit(mask: number, at: string, load: number, elapsed: number, cost: number, route: TeamRoute) {
     const prior = best.get(mask);
     if (!prior || cost < prior.cost) best.set(mask, { mask, cost, route });
     requests.forEach((request, index) => {
       if ((mask & (1 << index)) || !request.nodeId || !team.capabilities.includes(request.category) || load + request.quantity > team.capacity) return;
-      const path = shortestPath(at, request.nodeId, blocked);
+      const path = findPath(at, request.nodeId, blocked);
       if (!path) return;
       const arrival = elapsed + path.minutes;
       visit(mask | (1 << index), request.nodeId, load + request.quantity, arrival + 2,
@@ -29,7 +30,7 @@ function optionsFor(team: Team, requests: Incident[], blocked: string[]): Option
   return [...best.values()];
 }
 
-export function generatePlan(board: Board): RoutePlan {
+export function generatePlan(board: Board, findPath: PathFinder = shortestPath): RoutePlan {
   const requests = board.incidents.filter(item => item.status === 'verified');
   if (!requests.length) throw new Error('Verify at least one report before generating routes.');
   if (requests.length > 8) throw new Error('The exact demo optimizer supports up to 8 verified requests at a time.');
@@ -38,7 +39,7 @@ export function generatePlan(board: Board): RoutePlan {
   // Dynamic programming across teams finds the cheapest non-overlapping set of routes.
   let states = new Map<number, { cost: number; routes: TeamRoute[] }>([[0, { cost: 0, routes: [] }]]);
   for (const team of teams) {
-    const options = optionsFor(team, requests, board.blockedEdgeIds);
+    const options = optionsFor(team, requests, board.blockedEdgeIds, findPath);
     const next = new Map<number, { cost: number; routes: TeamRoute[] }>();
     for (const [used, state] of states) {
       for (const option of options) {

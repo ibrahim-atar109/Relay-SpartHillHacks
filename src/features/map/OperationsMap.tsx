@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MapInstance, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Incident, Team, RoutePlan } from '../../../shared/contracts';
-import { edges, nodes } from '../../data/network';
-import type * as GeoJSON from 'geojson';
+import { roadFeatures } from './routeGeometry';
 
 const fallbackStyle: StyleSpecification = {
   version: 8,
@@ -11,7 +10,7 @@ const fallbackStyle: StyleSpecification = {
   layers: [{ id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': -0.85, 'raster-opacity': 0.8 } }],
 };
 
-export function OperationsMap({ incidents, teams, plan, blockedEdgeIds, selectedId, onSelect }: { incidents: Incident[]; teams: Team[]; plan: RoutePlan | null; blockedEdgeIds: string[]; selectedId: string | null; onSelect: (id: string) => void }) {
+export function OperationsMap({ incidents, teams, plan, selectedId, onSelect }: { incidents: Incident[]; teams: Team[]; plan: RoutePlan | null; blockedEdgeIds: string[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapInstance | null>(null);
   const [error, setError] = useState(false);
@@ -57,36 +56,28 @@ export function OperationsMap({ incidents, teams, plan, blockedEdgeIds, selected
     if (!instance) return;
     function draw() {
       if (!instance) return;
-      const features: GeoJSON.Feature<GeoJSON.LineString>[] = edges.map(edge => ({
-        type: 'Feature', properties: { color: blockedEdgeIds.includes(edge.id) ? '#c04a3e' : '#7d8c7b', kind: 'network' },
-        geometry: { type: 'LineString', coordinates: [nodes[edge.from].coordinates, nodes[edge.to].coordinates] },
-      }));
-      plan?.routes.forEach((route, index) => {
-        if (route.coordinates.length > 1) features.push({ type: 'Feature', properties: { color: ['#336e91', '#8d649b', '#bc8038'][index % 3], kind: 'route' }, geometry: { type: 'LineString', coordinates: route.coordinates } });
-      });
-      const data: GeoJSON.FeatureCollection<GeoJSON.LineString> = { type: 'FeatureCollection', features };
-      const source = instance.getSource('demo-network') as maplibregl.GeoJSONSource | undefined;
+      const data = roadFeatures(plan);
+      const source = instance.getSource('road-routes') as maplibregl.GeoJSONSource | undefined;
       if (source) source.setData(data);
       else {
-        instance.addSource('demo-network', { type: 'geojson', data });
-        instance.addLayer({ id: 'network-links', type: 'line', source: 'demo-network', filter: ['==', ['get', 'kind'], 'network'], paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [3, 2], 'line-opacity': 0.65 } });
-        instance.addLayer({ id: 'planned-routes', type: 'line', source: 'demo-network', filter: ['==', ['get', 'kind'], 'route'], paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': 0.85 } });
+        instance.addSource('road-routes', { type: 'geojson', data });
+        instance.addLayer({ id: 'planned-routes', type: 'line', source: 'road-routes', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': 0.85 } });
       }
     }
     if (instance.isStyleLoaded()) draw();
     instance.on('load', draw);
-    if (plan?.routes.length) {
+    if (plan?.routing?.provider === 'amazon-location' && plan.routes.length) {
       const bounds = new maplibregl.LngLatBounds();
       plan.routes.forEach(route => route.coordinates.forEach(point => bounds.extend(point)));
-      if (!bounds.isEmpty()) instance.fitBounds(bounds, { padding: 85, maxZoom: 13.5, duration: 650 });
+      if (!bounds.isEmpty()) instance.fitBounds(bounds, { padding: 85, maxZoom: 14.5, duration: 650 });
     }
     return () => { instance.off('load', draw); };
-  }, [plan, blockedEdgeIds]);
+  }, [plan]);
 
   return <section className="map-panel" aria-label="Incident map">
     <div ref={container} className="map-canvas" />
     <div className="map-heading"><span className="live-dot" /> SAN JOSÉ <span className="map-label">Operational area</span></div>
-    <div className="map-note">{incidents.length ? `${incidents.length} verified requests · Schematic demo network` : 'No verified reports yet. Review collected data to add map pins.'}<br />Red dashed link: blocked · Colored lines: proposed team routes</div>
+    <div className="map-note">{incidents.length ? `${incidents.length} verified requests · Sample locations` : 'No verified reports yet. Review collected data to add map pins.'}<br />{plan?.routing ? <>Driving routes via Amazon Location · Road access points<br />Routing © <a href="https://www.here.com/legal/terms" target="_blank" rel="noreferrer">HERE</a> · Traffic not included</> : 'Generate road routes to display the driving paths.'}</div>
     {error && <div className="map-error" role="status">Map tiles unavailable. Requests remain accessible in the list.</div>}
     <div className="map-legend"><span><i className="legend-dot critical" /> Critical</span><span><i className="legend-dot high" /> High</span><span><i className="legend-dot normal" /> Normal</span><span><i className="legend-dot team" /> Team</span></div>
   </section>;
