@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Incident } from '../../../shared/contracts';
-import { aiConfigured, aiSignedIn, setAiPassword, signInAi, signOutAi } from '../../services/ai';
+import { aiConfigured, aiPasswordPending, aiSignedIn, setAiPassword, signInAi, signOutAi } from '../../services/ai';
 
 export function AiIntake({ busy, onCollect, onSessionChange }: { busy: boolean; onCollect: (report: string, source: Incident['source']) => Promise<boolean>; onSessionChange: () => void }) {
   const [signedIn, setSignedIn] = useState(aiSignedIn());
@@ -22,12 +22,16 @@ export function AiIntake({ busy, onCollect, onSessionChange }: { busy: boolean; 
           else { const result = await signInAi(username.trim(), password); setNewPassword(result === 'new_password'); setSignedIn(result === 'signed_in'); }
           setPassword('');
           onSessionChange();
-        } catch (err) { setError(err instanceof Error ? err.message : 'Sign-in failed.'); }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Sign-in failed.');
+          if (newPassword && !aiPasswordPending()) { setNewPassword(false); setPassword(''); }
+        }
         finally { setSigningIn(false); }
       }}>
         {!newPassword && <label className="field">Coordinator username<input autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required disabled={signingIn} /></label>}
         <label className="field">{newPassword ? 'Choose a new password (12+ characters, uppercase, lowercase, number, symbol)' : 'Password'}<input type="password" autoComplete={newPassword ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} minLength={newPassword ? 12 : 1} required disabled={signingIn} /></label>
         <button className="button secondary" disabled={signingIn}>{signingIn ? 'Signing in…' : newPassword ? 'Set password & sign in' : 'Sign in to AI features'}</button>
+        {newPassword && <button type="button" className="button secondary" disabled={signingIn} onClick={() => { signOutAi(); setNewPassword(false); setSignedIn(false); setPassword(''); setError(''); onSessionChange(); }}>Back to sign in</button>}
       </form> : <div className="ai-session"><span>Coordinator signed in · session stays in this tab</span><button className="button secondary" disabled={busy} onClick={() => { signOutAi(); setSignedIn(false); onSessionChange(); }}>Sign out</button></div>}
       {error && <p className="error-banner" role="alert">{error}</p>}
       <form onSubmit={async e => { e.preventDefault(); if (await onCollect(report.trim(), source)) setReport(''); }}>

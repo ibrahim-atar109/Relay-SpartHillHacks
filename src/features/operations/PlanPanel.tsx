@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Route, ShieldCheck, Send, CheckCircle2 } from 'lucide-react';
 import type { Board } from '../../../shared/contracts';
 import { isDemo } from '../../services/api';
-import { aiConfigured } from '../../services/ai';
+import { aiConfigured, aiSignedIn } from '../../services/ai';
 
 export function PlanPanel({ board, busy, onGenerate, onApprove, onAlert }: {
   board: Board; busy: boolean; onGenerate: () => void; onApprove: (id: string) => void; onAlert: (id: string) => void;
@@ -11,8 +11,9 @@ export function PlanPanel({ board, busy, onGenerate, onApprove, onAlert }: {
   const plan = board.plan;
   const verified = board.incidents.filter(item => item.status === 'verified').length;
   const unverified = board.incidents.filter(item => item.status === 'needs_review').length;
+  const needsAiLogin = aiConfigured && isDemo && !aiSignedIn();
   return <section className="plan-panel" aria-label="Route planning and rescuer alerts">
-    <div className="plan-header"><div><div className="section-kicker">STEPS 2–4 · PLAN, VERIFY, ALERT</div><h2>From verified reports to a rescue plan.</h2><p>{verified} verified requests ready · {unverified} unverified reports excluded</p></div><button className="button primary" disabled={busy || !verified} onClick={onGenerate}><Route size={16} />{busy ? 'Working…' : aiConfigured && isDemo ? 'Optimize routes & review with Bedrock' : 'Generate optimal routes'}</button></div>
+    <div className="plan-header"><div><div className="section-kicker">STEPS 2–4 · PLAN, VERIFY, ALERT</div><h2>From verified reports to a rescue plan.</h2><p>{verified} verified requests ready · {unverified} unverified reports excluded</p>{needsAiLogin && <p role="status">Sign in at Report Intake above and finish setting your password to enable Bedrock route review.</p>}</div><button className="button primary" disabled={busy || !verified || needsAiLogin} onClick={onGenerate}><Route size={16} />{busy ? 'Working…' : aiConfigured && isDemo ? 'Optimize routes & review with Bedrock' : 'Generate optimal routes'}</button></div>
     {!plan ? <div className="plan-empty">Verify collected data above, then run the routing agent. Review its proposed stops and arrival times here before any alerts are created.</div> : <>
       <div className="plan-summary"><span className={`status plan-${plan.status}`}>{plan.status === 'proposed' ? 'Awaiting your route verification' : plan.status === 'approved' ? 'Routes verified · Ready to alert' : 'Plan dispatched'}</span><span>{plan.routes.length} teams · {plan.routes.reduce((sum, route) => sum + route.stops.length, 0)} stops · {plan.routes.reduce((sum, route) => sum + route.travelMinutes, 0)} total drive minutes</span></div>
       <p className="planner-explanation">{plan.explanation}</p>

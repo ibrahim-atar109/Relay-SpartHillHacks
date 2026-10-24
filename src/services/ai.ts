@@ -7,6 +7,7 @@ export const aiConfigured = !!(base && region && clientId);
 let session: { token: string; expiresAt: number } | null = null;
 let pendingChallenge: { username: string; session: string } | null = null;
 export const aiSignedIn = () => !!session && session.expiresAt > Date.now();
+export const aiPasswordPending = () => pendingChallenge !== null;
 export function signOutAi() { session = null; pendingChallenge = null; }
 
 async function cognito(target: string, body: unknown) {
@@ -44,7 +45,12 @@ export async function setAiPassword(password: string) {
   acceptAuth(data);
 }
 async function request<T>(path: string, body: unknown): Promise<T> {
-  if (!aiSignedIn()) { signOutAi(); throw new Error('Sign in to Bedrock features; your session may have expired.'); }
+  if (!aiSignedIn()) {
+    const expired = session !== null;
+    session = null;
+    // An AI action during first login must not erase the Cognito password challenge.
+    throw new Error(pendingChallenge ? 'Finish setting your new password above before using AI features.' : expired ? 'Your AI session expired. Sign in above to continue.' : 'Sign in above to use AI features.');
+  }
   const response = await fetch(`${base}${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session!.token}` },
     body: JSON.stringify(body), signal: AbortSignal.timeout(35000),
