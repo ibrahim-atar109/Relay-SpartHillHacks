@@ -1,4 +1,17 @@
 .pipeline-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 18px; }
+.ai-intake { margin: 20px 0; padding: 22px; border: 1px solid #d8e0cd; border-radius: 10px; background: white; }
+.ai-intake h2 { margin: 12px 0; font-size: 20px; }
+.ai-intake p, .ai-plan-review { font-size: 12px; line-height: 1.8; color: #607053; }
+.ai-login { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; }
+.ai-login .field { flex: 1; min-width: 180px; }
+.ai-login button { margin-bottom: 13px; }
+.field textarea { width: 100%; border: 1px solid #d2dcc8; background: white; border-radius: 5px; padding: 10px; color: #30452b; font: inherit; resize: vertical; }
+.ai-session { display: flex; gap: 16px; align-items: center; justify-content: space-between; font-size: 12px; color: #607053; flex-wrap: wrap; }
+.ai-session p { flex: 1; min-width: 220px; }
+.ai-provenance { display: block; font-size: 10px; color: #607053; overflow-wrap: anywhere; margin-top: 8px; }
+.ai-plan-review { padding: 16px; margin: 16px 0; background: #f4f7ed; border-radius: 6px; }
+.ai-plan-review p { margin: 8px 0; }
+.ai-plan-review ul { padding-left: 20px; }
 .pipeline-steps > div { display: grid; grid-template-columns: 28px 1fr; column-gap: 9px; row-gap: 4px; border: 1px solid #dfe4d8; padding: 14px; border-radius: 8px; color: #7e8973; }
 .pipeline-steps span { grid-row: span 2; border-radius: 50%; background: #e5e9de; height: 26px; display: grid; place-items: center; font-size: 11px; }
 .pipeline-steps strong { font-size: 11px; }

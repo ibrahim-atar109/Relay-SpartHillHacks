@@ -14,11 +14,13 @@ export function applyAction(board: Board, id: string, action: IncidentAction): B
     const fields = action.corrections ?? { nodeId: incident.nodeId || '', people: incident.people, quantity: incident.quantity, priority: incident.priority };
     if (!nodes[fields.nodeId] || !Number.isInteger(fields.people) || fields.people < 1 || !Number.isInteger(fields.quantity) || fields.quantity < 1 || !['critical', 'high', 'normal'].includes(fields.priority)) throw new Error('Confirm a location, priority, and positive whole-number people/tote counts.');
     if (!action.corrections && incident.missingInfo.length) throw new Error('Resolve missing information before verification.');
+    const category = action.corrections?.category ?? incident.category;
+    if (!['water', 'food', 'medicine'].includes(category) || (incident.categoryNeedsReview && !action.corrections?.category)) throw new Error('Confirm a supported supply category.');
     return log({
       ...board, revision: board.revision + 1, plan: board.plan?.status === 'alerted' ? board.plan : null,
       incidents: board.incidents.map(item => item.id === id ? {
-        ...item, ...fields, location: nodes[fields.nodeId], status: 'verified', missingInfo: [],
-        summary: `${fields.quantity} supply totes of ${item.category} for ${fields.people} people at ${nodes[fields.nodeId].label}. Fields reviewed by coordinator.`,
+        ...item, ...fields, category, categoryNeedsReview: false, location: nodes[fields.nodeId], status: 'verified', missingInfo: [],
+        summary: `${fields.quantity} supply totes of ${category} for ${fields.people} people at ${nodes[fields.nodeId].label}. Fields reviewed by coordinator.`,
         updatedAt: at, verifiedAt: at,
       } : item),
     }, `${id} · Data verified and added to the map; any unsent plan must be regenerated`);

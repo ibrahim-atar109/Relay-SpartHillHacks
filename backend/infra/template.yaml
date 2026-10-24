@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Relay authenticated Bedrock intake and scenario route planning
+Parameters:
+  FrontendOrigin:
+    Type: String
+    Description: Exact Amplify HTTPS origin, without trailing slash
+    AllowedPattern: 'https://[a-zA-Z0-9.-]+'
+  BedrockModelId:
+    Type: String
+    Description: Converse-compatible model ID or inference profile ID allowed by the hackathon
+    MinLength: 1
+  BedrockResourceArns:
+    Type: CommaDelimitedList
+    Description: Allowed model ARNs (include inference profile ARN and destination model ARNs for cross-Region inference)
+Resources:
+  Users:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+  UserClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref Users
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        IdToken: hours
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontendOrigin
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - POST
+          - OPTIONS
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 5
+        ThrottlingRateLimit: 2
+      Auth:
+        DefaultAuthorizer: Coordinator
+        Authorizers:
+          Coordinator:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${Users}'
+              audience:
+                - !Ref UserClient
+  AiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../dist/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Timeout: 28
+      MemorySize: 512
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Ref BedrockResourceArns
+      Events:
+        Extract:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/extract
+            Method: POST
+        Plan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /ai/plan
+            Method: POST
+  AiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AiFunction}'
+      RetentionInDays: 7
+Outputs:
+  AiApiUrl:
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  CognitoClientId:
+    Value: !Ref UserClient
+  CognitoUserPoolId:
+    Value: !Ref Users
+  AwsRegion:
+    Value: !Ref AWS::Region

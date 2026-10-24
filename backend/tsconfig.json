@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["node"], "noEmit": true },
+  "include": ["./**/*.ts", "../shared/**/*.ts", "../src/data/network.ts", "../src/features/operations/planner.ts"],
+  "exclude": ["dist"]
+}

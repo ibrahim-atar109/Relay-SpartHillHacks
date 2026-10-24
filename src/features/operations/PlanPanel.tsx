@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Route, ShieldCheck, Send, CheckCircle2 } from 'lucide-react';
 import type { Board } from '../../../shared/contracts';
 import { isDemo } from '../../services/api';
+import { aiConfigured } from '../../services/ai';
 
 export function PlanPanel({ board, busy, onGenerate, onApprove, onAlert }: {
   board: Board; busy: boolean; onGenerate: () => void; onApprove: (id: string) => void; onAlert: (id: string) => void;
@@ -11,10 +12,11 @@ export function PlanPanel({ board, busy, onGenerate, onApprove, onAlert }: {
   const verified = board.incidents.filter(item => item.status === 'verified').length;
   const unverified = board.incidents.filter(item => item.status === 'needs_review').length;
   return <section className="plan-panel" aria-label="Route planning and rescuer alerts">
-    <div className="plan-header"><div><div className="section-kicker">STEPS 2–4 · PLAN, VERIFY, ALERT</div><h2>From verified reports to a rescue plan.</h2><p>{verified} verified requests ready · {unverified} unverified reports excluded</p></div><button className="button primary" disabled={busy || !verified} onClick={onGenerate}><Route size={16} />{busy ? 'Working…' : 'Generate optimal routes'}</button></div>
+    <div className="plan-header"><div><div className="section-kicker">STEPS 2–4 · PLAN, VERIFY, ALERT</div><h2>From verified reports to a rescue plan.</h2><p>{verified} verified requests ready · {unverified} unverified reports excluded</p></div><button className="button primary" disabled={busy || !verified} onClick={onGenerate}><Route size={16} />{busy ? 'Working…' : aiConfigured && isDemo ? 'Optimize routes & review with Bedrock' : 'Generate optimal routes'}</button></div>
     {!plan ? <div className="plan-empty">Verify collected data above, then run the routing agent. Review its proposed stops and arrival times here before any alerts are created.</div> : <>
       <div className="plan-summary"><span className={`status plan-${plan.status}`}>{plan.status === 'proposed' ? 'Awaiting your route verification' : plan.status === 'approved' ? 'Routes verified · Ready to alert' : 'Plan dispatched'}</span><span>{plan.routes.length} teams · {plan.routes.reduce((sum, route) => sum + route.stops.length, 0)} stops · {plan.routes.reduce((sum, route) => sum + route.travelMinutes, 0)} total drive minutes</span></div>
       <p className="planner-explanation">{plan.explanation}</p>
+      {plan.ai && <div className="ai-plan-review"><div className="section-kicker">BEDROCK PLAN REVIEW</div><p>{plan.aiExplanation}</p>{!!plan.reviewNotes?.length && <ul>{plan.reviewNotes.map(note => <li key={note}>{note}</li>)}</ul>}<small className="ai-provenance">{plan.ai.modelId} · AI commentary for coordinator review</small></div>}
       {!!plan.unservedIds.length && <div className="error-banner" role="status">Unserved requests: {plan.unservedIds.join(', ')}. No feasible capacity/access in this plan; these requests remain open.</div>}
       <div className="route-cards">{plan.routes.map((route, index) => <article className="route-card" key={route.teamId} style={{ borderTopColor: ['#336e91', '#8d649b', '#bc8038'][index % 3] }}><h3>{board.teams.find(team => team.id === route.teamId)?.name}</h3><p>{route.load} / {board.teams.find(team => team.id === route.teamId)?.capacity} totes · {route.travelMinutes} min driving</p><ol>{route.stops.map(stop => {
         const incident = board.incidents.find(item => item.id === stop.incidentId)!;

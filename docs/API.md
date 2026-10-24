@@ -1,5 +1,11 @@
 # Pipeline API contract
 
+## Bedrock AI API (implemented)
+
+The optional SAM backend provides `POST /ai/extract` (`{ report, followUp? }` → `ExtractionResponse`) and `POST /ai/plan` (`{ board }` → `PlanResponse`). Both require `Authorization: Bearer <Cognito ID token>` validated by API Gateway. See shared/contracts.ts and [Bedrock setup](BEDROCK_SETUP.md). These endpoints augment the browser scenario (`VITE_DATA_MODE=demo`); they do not provide persistent board storage. All routes are server-computed on the bounded fictional network. Bedrock supplies extraction/clarification and a separately labeled route commentary, not coordinates or route arithmetic.
+
+The rest of this document describes the future full board API; these endpoints are not implemented by the AI backend.
+
 Canonical types: shared/contracts.ts. Coordinates are [longitude, latitude]; unknown location is null. Timestamps use ISO 8601. Responses use application/json.
 
 | Method | Path | Request | Response |

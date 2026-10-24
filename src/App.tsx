@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Radio, LayoutDashboard, RefreshCw, Plus, Search, Users, CircleCheck, Inbox, Activity } from 'lucide-react';
-import type { Board, IncidentAction } from '../shared/contracts';
+import type { Board, Incident, IncidentAction } from '../shared/contracts';
+import { aiConfigured } from './services/ai';
+import { AiIntake } from './features/reporting/AiIntake';
 import { api, isDemo } from './services/api';
 import { OperationsMap } from './features/map/OperationsMap';
 import { IncidentQueue } from './features/incidents/IncidentQueue';
@@ -14,12 +16,22 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [, setAuthRevision] = useState(0);
   const select = useCallback((id: string) => setSelectedId(id), []);
   useEffect(() => { api.getBoard().then(setBoard).catch(err => setError(err.message)); }, []);
   async function run(operation: () => Promise<Board>) {
     setBusy(true); setError('');
     try { setBoard(await operation()); }
     catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong.'); }
+    finally { setBusy(false); }
+  }
+  async function collectReport(report: string, source: Incident['source']) {
+    setBusy(true); setError('');
+    try {
+      const next = await api.collectReport(report, source);
+      setBoard(next); setSelectedId(next.incidents[next.incidents.length - 1].id); setFilter('all'); setSearch('');
+      return true;
+    } catch (err) { setError(err instanceof Error ? err.message : 'Report collection failed.'); return false; }
     finally { setBusy(false); }
   }
   const onAction = (id: string, action: IncidentAction) => { void run(() => api.act(id, action)); };
@@ -36,7 +48,8 @@ export default function App() {
         <button className="button secondary" disabled={busy} onClick={() => { select('REQ-1042'); setFilter('all'); setSearch(''); void run(() => isDemo ? api.reset() : api.getBoard()); }}><RefreshCw size={15} />{isDemo ? 'Reset scenario' : 'Refresh'}</button>
         {isDemo && <button className="button secondary" disabled={busy || incidents.length >= 7} onClick={() => { select('REQ-1048'); setFilter('all'); setSearch(''); void run(api.simulateReport); }}><Plus size={17} />Collect another report</button>}
       </div></div>
-      {isDemo && <div className="demo-banner">SIMULATED SCENARIO <span>Synthetic transcripts and local optimization on a fictional network. Routes are schematic; alerts stay inside this demo. Bedrock and delivery APIs are not connected.</span></div>}
+      {isDemo && <div className="demo-banner">SCENARIO WORKSPACE <span>{aiConfigured ? 'Bedrock report extraction and plan review enabled. Scenario data stays in this browser tab. Routes use a fictional network; alerts are simulated.' : 'Synthetic reports and local optimization on a fictional network. Connect the AI backend below to enable Bedrock. Alerts are simulated.'}</span></div>}
+      {isDemo && <AiIntake busy={busy} onCollect={collectReport} onSessionChange={() => setAuthRevision(value => value + 1)} />}
       <div className="pipeline-steps" aria-label="Approval pipeline">
         <div className={mapped.length ? 'complete' : 'current'}><span>1</span><strong>Verify collected data</strong><small>{incidents.filter(item => item.status === 'needs_review').length} awaiting review</small></div>
         <div className={board?.plan ? 'complete' : mapped.length ? 'current' : ''}><span>2</span><strong>Generate routes</strong><small>{mapped.length} verified requests on map</small></div>
@@ -58,7 +71,7 @@ export default function App() {
             <IncidentQueue incidents={visible} selectedId={selectedId} onSelect={select} />
           </div>
           <OperationsMap incidents={mapped} teams={board.teams} plan={board.plan} blockedEdgeIds={board.blockedEdgeIds} selectedId={selectedId} onSelect={select} />
-          <IncidentDetail incident={selected} busy={busy} onAction={onAction} />
+          <IncidentDetail incident={selected} busy={busy} onAction={onAction} onAnalyze={(id, followUp) => void run(() => api.analyzeReport(id, followUp))} />
         </section>
         <PlanPanel board={board} busy={busy} onGenerate={() => void run(api.plan)} onApprove={id => void run(() => api.approvePlan(id))} onAlert={id => void run(() => api.alertRescuers(id))} />
         <section className="bottom-grid"><div className="team-strip"><div className="section-kicker">RESCUER TEAMS</div><div className="teams">{board.teams.map(team => <div className="team-card" key={team.id}><span className="team-avatar">{team.name.split(' ')[1][0]}</span><div><strong>{team.name}</strong><small>{team.members} rescuers · {team.capacity} totes · {team.capabilities.join(', ')}</small></div><span className={`team-status ${team.status}`}>{team.status}</span></div>)}</div></div>

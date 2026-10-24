@@ -8,3 +8,4 @@ dist/
 .DS_Store
 .aws-sam/
 coverage/
+backend/dist/

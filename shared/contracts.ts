@@ -19,6 +19,10 @@ export interface Incident {
   updatedAt: string;
   nodeId?: string;
   verifiedAt?: string;
+  ai?: AiProvenance;
+  clarificationQuestions?: string[];
+  followUps?: string[];
+  categoryNeedsReview?: boolean;
 }
 export interface Team {
   id: string;
@@ -49,6 +53,9 @@ export interface RoutePlan {
   weightedArrivalMinutes: number;
   explanation: string;
   approvedAt?: string;
+  ai?: AiProvenance;
+  aiExplanation?: string;
+  reviewNotes?: string[];
 }
 export interface RescuerAlert {
   id: string;
@@ -68,5 +75,21 @@ export interface Board {
   alerts: RescuerAlert[];
 }
 export type IncidentAction =
-  | { type: 'verify'; corrections?: { nodeId: string; people: number; quantity: number; priority: Priority } }
+  | { type: 'verify'; corrections?: { nodeId: string; people: number; quantity: number; priority: Priority; category?: Incident['category'] } }
   | { type: 'deliver' };
+
+export interface AiProvenance { provider: 'bedrock'; modelId: string; requestId: string; at: string }
+export interface ReportExtraction {
+  title: string;
+  summary: string;
+  category: Incident['category'] | null;
+  priority: Priority | null;
+  locationLabel: string | null;
+  nodeId: string | null;
+  people: number | null;
+  quantity: number | null;
+  missingInfo: string[];
+  clarificationQuestions: string[];
+}
+export interface ExtractionResponse { extraction: ReportExtraction; ai: AiProvenance }
+export interface PlanResponse { plan: RoutePlan }
